@@ -73,8 +73,9 @@ func encode(m object) ([]byte, error) {
 	}
 	return append(b, '\n'), nil
 }
-func command(binary string) string {
-	return "'" + strings.ReplaceAll(binary, "'", "'\"'\"'") + "' guard"
+func command(binary string) string { return quotedBinary(binary) + " hook" }
+func quotedBinary(binary string) string {
+	return "'" + strings.ReplaceAll(binary, "'", "'\"'\"'") + "'"
 }
 func replaceHook(m object, binary string) {
 	h := table(m, "hooks")
@@ -84,7 +85,7 @@ func replaceHook(m object, binary string) {
 		kept := []any{}
 		for _, entry := range array(g, "hooks") {
 			x := entry.(map[string]any)
-			if x["command"] != command(binary) {
+			if x["command"] != command(binary) && x["command"] != quotedBinary(binary)+" guard" {
 				kept = append(kept, x)
 			}
 		}

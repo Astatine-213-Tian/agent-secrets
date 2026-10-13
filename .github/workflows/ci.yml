@@ -17,4 +17,6 @@ jobs:
       - run: mise run build
       - run: ./bin/agent-secrets verify
       - run: mise exec -- go test ./internal/guard -run '^$' -fuzz FuzzCheck -fuzztime 10s
+      - run: mise exec -- go test ./internal/guard -run '^$' -fuzz FuzzHook -fuzztime 10s
       - run: mise exec -- go test ./internal/install -run '^$' -fuzz FuzzPrepare -fuzztime 10s
+      - run: mise exec -- go test ./internal/install -run '^$' -fuzz FuzzRedactCodexConfig -fuzztime 10s

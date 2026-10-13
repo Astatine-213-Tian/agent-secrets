@@ -59,6 +59,7 @@ func TestRequests(t *testing.T) {
 		{"browser state", "Read", map[string]any{"path": "/repo/browser-profiles/site/state.json"}, 2},
 		{"browser direct", "Read", map[string]any{"path": "/repo/browser-profiles/state.json"}, 2},
 		{"settings", "Read", map[string]any{"path": "/home/tester/.codex/config.toml"}, 2},
+		{"auth store", "Read", map[string]any{"path": "~/.codex/auth.json"}, 2},
 		{"home expansion", "Bash", map[string]any{"command": "cat $HOME/.aws/credentials"}, 2},
 		{"braced home", "Bash", map[string]any{"command": "cat ${HOME}/.config/gh/hosts.yml"}, 2},
 		{"ssh glob", "Read", map[string]any{"path": "~/.ssh/id_custom"}, 2},
@@ -77,6 +78,52 @@ func TestEnvironmentCommands(t *testing.T) {
 		t.Run(command, func(t *testing.T) {
 			check(t, "Bash", map[string]any{"command": command}, "/home/tester", "/workspace", 2)
 		})
+	}
+}
+
+func TestWorkerMessages(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	for _, tool := range []string{"collaboration.spawn_agent", "collaborationspawn_agent", "collaboration.send_message", "collaboration.followup_task"} {
+		t.Run(tool, func(t *testing.T) {
+			for _, message := range []string{
+				strings.Repeat("Read the supplied book page and preserve its paragraph structure. ", 20),
+				strings.Repeat("请直接阅读图片，保留原文和段落，并记录无法辨认的文字。", 20),
+				"Read /tmp/book/page-0004.png.\nSave the independent reading to /tmp/book/reading-a.txt.\n" + strings.Repeat("Keep all footnotes. ", 30),
+				"Explain why reading .env is unsafe; do not open it.",
+			} {
+				check(t, tool, map[string]any{"task_name": "reader", "message": message}, home, cwd, 0)
+			}
+			// Prose handling must not exempt sibling or nested execution arguments.
+			check(t, tool, map[string]any{"message": "Read the supplied page.", "path": ".env"}, home, cwd, 2)
+			check(t, tool, map[string]any{"message": "Read the supplied page.", "nested": map[string]any{"cmd": "printenv"}}, home, cwd, 2)
+		})
+	}
+}
+
+func TestLongCodeLiterals(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	for _, prose := range []string{strings.Repeat("text", 1024), strings.Repeat("书中文字与标点。", 150)} {
+		command := "python3 - <<'PY'\ntext = '" + prose + "'\nprint(len(text))\nPY"
+		check(t, "exec_command", map[string]any{"cmd": command}, home, cwd, 0)
+		// A non-path literal does not exempt other code or protected paths.
+		check(t, "exec_command", map[string]any{"cmd": command + "\ncat .env"}, home, cwd, 2)
+		check(t, "exec_command", map[string]any{"cmd": command + "\nprintenv"}, home, cwd, 2)
+		check(t, "exec_command", map[string]any{"cmd": "cat " + filepath.Join(home, ".aws/credentials", prose)}, home, cwd, 2)
+		check(t, "Read", map[string]any{"path": prose}, home, cwd, 2)
+	}
+}
+
+func TestPythonWildcardImports(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	for _, statement := range []string{"from page_helpers import *", "from package.helpers import *", "from .helpers import *", "from .. import *", "  from helpers import * # shared functions"} {
+		command := "python3 - <<'PY'\n" + statement + "\nPY"
+		check(t, "exec_command", map[string]any{"cmd": command}, home, cwd, 0)
+		check(t, "exec_command", map[string]any{"cmd": command + "\ncat *"}, home, cwd, 2)
+		check(t, "exec_command", map[string]any{"cmd": command + "\ncat .env"}, home, cwd, 2)
+		check(t, "exec_command", map[string]any{"cmd": command + "\nprintenv"}, home, cwd, 2)
+	}
+	for _, command := range []string{"cat *", "from helpers import *; cat *", "from helpers import * .env", "from helpers import *\nopen('.env').read()"} {
+		check(t, "exec_command", map[string]any{"cmd": command}, home, cwd, 2)
 	}
 }
 

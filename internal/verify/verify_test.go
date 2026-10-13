@@ -2,19 +2,34 @@ package verify_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/Astatine-213-Tian/agent-secrets/internal/guard"
+	"github.com/Astatine-213-Tian/agent-secrets/internal/install"
 	"github.com/Astatine-213-Tian/agent-secrets/internal/verify"
 )
 
 func TestMain(m *testing.M) {
-	if len(os.Args) == 2 && os.Args[1] == "guard" {
+	if len(os.Args) == 2 && (os.Args[1] == "guard" || os.Args[1] == "hook") {
 		home, _ := os.UserHomeDir()
 		cwd, _ := os.Getwd()
+		if os.Args[1] == "hook" {
+			exe, _ := os.Executable()
+			os.Exit(guard.Hook(os.Stdin, os.Stdout, os.Stderr, home, cwd, exe))
+		}
 		os.Exit(guard.Check(os.Stdin, os.Stderr, home, cwd))
+	}
+	if len(os.Args) >= 4 && os.Args[1] == "__read-codex-config" {
+		b, err := install.ReadCodexConfig(context.Background(), os.Args[2], os.Args[3], os.Args[4:])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, install.ErrConfigView)
+			os.Exit(1)
+		}
+		_, _ = os.Stdout.Write(b)
+		os.Exit(0)
 	}
 	os.Exit(m.Run())
 }
@@ -31,7 +46,7 @@ func TestProcess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	r := verify.Process(ctx, exe, home)
-	if !r.Passed || len(r.Checks) != 13 {
+	if !r.Passed || len(r.Checks) != 29 {
 		t.Fatalf("process contract failed: %+v", r)
 	}
 }

@@ -60,7 +60,7 @@ func TestReplacesOwnHandlerInSharedGroup(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if strings.Count(string(out.Codex), "'/bin/agent-secrets' guard") != 1 || !bytes.Contains(out.Codex, []byte("other")) {
+	if strings.Count(string(out.Codex), "'/bin/agent-secrets' hook") != 1 || bytes.Contains(out.Codex, []byte("'/bin/agent-secrets' guard")) || !bytes.Contains(out.Codex, []byte("other")) {
 		t.Fatal("lost other handler or duplicated own handler")
 	}
 }
@@ -74,7 +74,7 @@ func TestQuotedInstallationPath(t *testing.T) {
 	_ = json.Unmarshal(out.Codex, &m)
 	groups := m["hooks"].(map[string]any)["PreToolUse"].([]any)
 	h := groups[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)
-	if h["command"] != `'/home/a user'"'"'s directory/agent-secrets' guard` {
+	if h["command"] != `'/home/a user'"'"'s directory/agent-secrets' hook` {
 		t.Fatal("unsafe shell quoting")
 	}
 }

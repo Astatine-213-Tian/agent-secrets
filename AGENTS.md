@@ -30,8 +30,11 @@ keep its user-facing instructions consistent with the resulting behavior.
 
 - The guard inspects arguments and metadata only. It must never read credential
   contents or echo requests, configuration values, or internal errors.
-- Preserve the hook contract: silent exit `0` for allowed requests; exit `2`
-  with the fixed denial message for denied, malformed, or oversized requests.
+- Preserve `guard`'s silent exit `0` for allowed requests and fixed exit `2`
+  denial for denied, malformed, or oversized requests. The installed `hook`
+  also emits `updatedInput` for allowlisted config reads, without reading
+  contents itself. Sanitize locally before the rewritten tool produces output;
+  validate reader arguments independently in the hook and private runner.
 - Use synthetic data and isolated homes in tests. Real settings and credentials
   are not test fixtures. Respect any active filesystem denials; use a terminal
   handoff for operations that the agent's permissions cannot perform.

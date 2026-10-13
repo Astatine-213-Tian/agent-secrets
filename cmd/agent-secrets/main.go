@@ -17,7 +17,7 @@ import (
 	"github.com/Astatine-213-Tian/agent-secrets/internal/verify"
 )
 
-const version = "1.0.0"
+const version = "1.1.0"
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 func run(args []string, in io.Reader, out, errOut io.Writer) int {
@@ -31,7 +31,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 		return 1
 	}
 	switch args[0] {
-	case "guard":
+	case "guard", "hook":
 		if len(args) != 1 {
 			fmt.Fprintln(errOut, guard.Reason)
 			return 2
@@ -41,12 +41,38 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 			fmt.Fprintln(errOut, guard.Reason)
 			return 2
 		}
+		if args[0] == "hook" {
+			exe, err := os.Executable()
+			if err != nil {
+				fmt.Fprintln(errOut, guard.Reason)
+				return 2
+			}
+			return guard.Hook(in, out, errOut, home, cwd, exe)
+		}
 		return guard.Check(in, errOut, home, cwd)
 	case "version", "--version":
 		fmt.Fprintf(out, "agent-secrets %s (%s)\n", version, runtime.Version())
 		return 0
 	case "help", "--help", "-h":
 		usage(out)
+		return 0
+	case "__read-codex-config":
+		// Private hook target, never a command agents need to discover or use.
+		if len(args) < 3 {
+			fmt.Fprintln(errOut, install.ErrConfigView)
+			return 1
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		b, e := install.ReadCodexConfig(ctx, args[1], args[2], args[3:])
+		if e != nil {
+			fmt.Fprintln(errOut, install.ErrConfigView)
+			return 1
+		}
+		if _, e := out.Write(b); e != nil {
+			fmt.Fprintln(errOut, install.ErrConfigView)
+			return 1
+		}
 		return 0
 	case "install":
 		f := flag.NewFlagSet(args[0], flag.ContinueOnError)
@@ -132,6 +158,7 @@ func usage(w io.Writer) {
 
   install [--home PATH]             Install Go hooks for both clients
   guard                            Check one JSON hook request on stdin (exit 0 or 2)
+  hook                             Screen requests and sanitize common config reads
   verify                           Test this executable with synthetic hook requests
   status                           Read back hooks and installed binary
   version                          Print package and Go versions

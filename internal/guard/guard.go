@@ -4,6 +4,7 @@ package guard
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/url"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/Astatine-213-Tian/agent-secrets/internal/policy"
 )
@@ -24,6 +26,7 @@ var shellVar = regexp.MustCompile(`\$\{?([A-Za-z_][A-Za-z_0-9]*)`)
 var envDump = regexp.MustCompile(`(?:^|[;|&\n(])\s*(?:(?:command|exec|sudo)\s+)?(?:/\S*/)?(?:printenv\b|env\s*(?:$|[;|&\n])|set\s*(?:$|-[a-zA-Z]*x)|(?:export|declare|typeset)\s+-p)`)
 var credentialCommand = regexp.MustCompile(`\b(?:ps\s+[^\n]*[eE]|security\s+find-(?:generic|internet)-password|gh\s+auth\s+token|docker\s+(?:container\s+)?inspect|(?:docker\s+)?compose\s+config)\b`)
 var patchPath = regexp.MustCompile(`(?m)^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)\r?$`)
+var pythonWildcardImport = regexp.MustCompile(`(?m)^([ \t]*from[ \t]+(?:\.*[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*|\.+)[ \t]+import[ \t]+)\*([ \t]*(?:#[^\r\n]*)?\r?$)`)
 
 // Check consumes one hook request. Malformed, oversized, or uninspectable input
 // is denied. Output is a fixed message; request content is never reflected.
@@ -97,7 +100,10 @@ func (g checker) inspect(v any, key string) bool {
 			return g.protected(value)
 		case "command", "cmd", "code", "expression", "script", "chars", "input", "":
 			return g.codeBlocked(value)
-		case "content", "old_string", "new_string", "pattern", "prompt":
+		case "content", "old_string", "new_string", "pattern", "prompt", "message":
+			// Prose is not a filesystem path. In particular, long worker
+			// messages can exceed a path-component limit during Lstat.
+			// Sibling and nested path/command arguments are still inspected.
 			return false
 		default:
 			return g.protected(value)
@@ -109,6 +115,10 @@ func (g checker) inspect(v any, key string) bool {
 func publicEnv(name string) bool { return name == ".env.example" || name == ".env.schema.json" }
 
 func (g checker) protected(value string) bool {
+	return g.inspectPath(value, false)
+}
+
+func (g checker) inspectPath(value string, codeWord bool) bool {
 	if decoded, err := url.PathUnescape(value); err == nil {
 		value = decoded
 	}
@@ -138,7 +148,14 @@ func (g checker) protected(value string) bool {
 	value = filepath.Clean(value)
 	resolved, err := resolveMissing(value, 0)
 	if err != nil {
-		return true
+		// Code words also include prose literals, not just filenames. A word
+		// the filesystem cannot represent is not a readable path. Keep the
+		// lexical policy checks below, and fail closed for explicit paths or
+		// any other metadata error (including symlink cycles and permissions).
+		if !codeWord || !errors.Is(err, syscall.ENAMETOOLONG) {
+			return true
+		}
+		resolved = value
 	}
 	for _, candidate := range []string{value, resolved} {
 		name := filepath.Base(candidate)
@@ -243,10 +260,14 @@ func (g checker) codeBlocked(code string) bool {
 	}
 	// Inspect literal words even within embedded code. This is intentionally
 	// heuristic: arbitrary computed paths are outside the hook's coverage.
-	words := strings.FieldsFunc(code, func(r rune) bool { return strings.ContainsRune(" \t\r\n\"'`;|&()<>=,", r) })
+	// Python import-all syntax is not a filesystem glob. Exempt only the
+	// star in a complete import statement; all other arguments and the
+	// original code's credential/environment checks remain active.
+	pathCode := pythonWildcardImport.ReplaceAllString(code, "${1} ${2}")
+	words := strings.FieldsFunc(pathCode, func(r rune) bool { return strings.ContainsRune(" \t\r\n\"'`;|&()<>=,", r) })
 	scan, broad, listing, explicit := false, false, false, false
 	for _, word := range words {
-		if g.protected(word) {
+		if g.inspectPath(word, true) {
 			return true
 		}
 		switch filepath.Base(word) {
