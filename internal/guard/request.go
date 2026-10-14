@@ -75,27 +75,26 @@ func Evaluate(data []byte, home, cwd, binary string) (decision Decision) {
 	default:
 		return
 	}
-	if filepath.IsAbs(binary) {
-		if updated := rewriteRead(payload, home, cwd, binary); updated != nil {
-			rewritten := make(map[string]any, len(payload))
-			for k, v := range payload {
-				rewritten[k] = v
-			}
-			rewritten["tool_input"] = updated
-			if search := rewriteSearch(rewritten, home, cwd); search != nil {
-				updated = search
-			}
-			return Decision{Kind: Rewrite, Input: updated}
-		}
-	}
 	g := checker{home: home, cwd: cwd, tool: strings.ToLower(tool)}
-	if !g.inspect(args, "") {
-		if filepath.IsAbs(binary) {
-			if updated := rewriteSearch(payload, home, cwd); updated != nil {
-				return Decision{Kind: Rewrite, Input: updated}
+	var shell *shellCommand
+	if filepath.IsAbs(binary) {
+		shell = g.shellCommand(tool, payload["tool_input"])
+		if shell != nil {
+			if source := shell.rewriteRead(binary); source != shell.source {
+				args = shell.updatedInput(source)
+				shell.source, shell.tree = source, parseRewrite(source)
 			}
 		}
-		return Decision{Kind: Allow}
 	}
-	return
+	// Screen once, after replacing only validated config reads. All remaining
+	// operands and sibling inputs stay subject to the same disclosure rules.
+	if g.inspect(args, "") {
+		return
+	}
+	if shell != nil {
+		if source := shell.rewriteSearch(); source != shell.input[shell.key] {
+			return Decision{Kind: Rewrite, Input: shell.updatedInput(source)}
+		}
+	}
+	return Decision{Kind: Allow}
 }

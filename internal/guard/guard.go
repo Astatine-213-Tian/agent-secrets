@@ -49,11 +49,7 @@ func (g checker) inspect(v any, key string) bool {
 	switch value := v.(type) {
 	case map[string]any:
 		if p, ok := value["workdir"].(string); ok {
-			if filepath.IsAbs(p) {
-				g.cwd = p
-			} else {
-				g.cwd = filepath.Join(g.cwd, p)
-			}
+			g = g.atWorkdir(p)
 		}
 		for k, item := range value {
 			if g.inspect(item, strings.ToLower(k)) {

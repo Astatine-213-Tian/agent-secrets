@@ -141,6 +141,42 @@ func TestHookUsesWorkdirAndFailsClosed(t *testing.T) {
 	}
 }
 
+func TestHookComposesRewritesInWorkdir(t *testing.T) {
+	home := t.TempDir()
+	for _, tool := range []string{"Bash", "shell_command", "exec_command"} {
+		key := "command"
+		if tool == "exec_command" {
+			key = "cmd"
+		}
+		for _, workdir := range []string{".codex", filepath.Join(home, ".codex")} {
+			args := map[string]any{
+				key: "cat config.toml; cat config.toml | rg REDACTED", "workdir": workdir,
+				"counter": json.Number("9007199254740993"),
+			}
+			payload := map[string]any{"tool_name": tool, "tool_input": args, "cwd": home}
+			input, _ := json.Marshal(payload)
+			decision := guard.Evaluate(input, home, "/unused", "/tmp/binary")
+			if decision.Kind != guard.Rewrite || decision.Input["workdir"] != workdir || decision.Input["counter"] != args["counter"] {
+				t.Fatal("rewrite lost context or metadata")
+			}
+			command, _ := decision.Input[key].(string)
+			if strings.Count(command, "'__run'") != 2 || !strings.Contains(command, "--glob") || !strings.Contains(command, "; ") || !strings.Contains(command, " | rg REDACTED") {
+				t.Fatal("read and search rewrites did not compose")
+			}
+			for _, unsafe := range []any{
+				map[string]any{"path": "auth.json"},
+				map[string]any{"cmd": "cat .env"},
+			} {
+				args["sibling"] = unsafe
+				input, _ = json.Marshal(payload)
+				if guard.Evaluate(input, home, "/unused", "/tmp/binary").Kind != guard.Deny {
+					t.Fatal("rewriting exempted an unsafe sibling")
+				}
+			}
+		}
+	}
+}
+
 func FuzzHook(f *testing.F) {
 	for _, command := range []string{
 		"cat ~/.codex/config.toml", "cat ~/.codex/config.toml | sed -n '1,80p'", "cat README.md", "cat .env",

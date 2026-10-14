@@ -2,7 +2,6 @@ package guard
 
 import (
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/Astatine-213-Tian/agent-secrets/internal/install"
@@ -12,43 +11,14 @@ import (
 // rewriteSearch preserves the native shell source and rg arguments. Only
 // negative globs are inserted; rg owns its options, traversal, output and errors.
 // Unrecognized syntax is left to the normal argument checks, not blanket-denied.
-func rewriteSearch(payload map[string]any, home, cwd string) map[string]any {
-	tool, _ := payload["tool_name"].(string)
-	key := "command"
-	switch tool {
-	case "Bash", "shell_command":
-	case "exec_command":
-		key = "cmd"
-	default:
-		return nil
+func (s *shellCommand) rewriteSearch() string {
+	if s.tree == nil {
+		return s.source
 	}
-	args, ok := payload["tool_input"].(map[string]any)
-	if !ok {
-		return nil
-	}
-	code, ok := args[key].(string)
-	if !ok {
-		return nil
-	}
-	if dir, ok := args["workdir"].(string); ok {
-		if filepath.IsAbs(dir) {
-			cwd = dir
-		} else {
-			cwd = filepath.Join(cwd, dir)
-		}
-	}
-	f, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(code), "")
-	if err != nil {
-		return nil
-	}
-	type insertion struct {
-		at   uint
-		text string
-	}
-	var edits []insertion
-	g := checker{home: home, cwd: cwd}
+	var edits []shellEdit
+	g := s.scope
 	var scopes []*checker
-	syntax.Walk(f, func(node syntax.Node) bool {
+	syntax.Walk(s.tree, func(node syntax.Node) bool {
 		if node == nil {
 			last := len(scopes) - 1
 			if scopes[last] != nil {
@@ -84,7 +54,7 @@ func rewriteSearch(payload map[string]any, home, cwd string) map[string]any {
 		}
 		name, _, _ := literalWord(words[0].Parts, false)
 		if name == "cd" && len(words) == 2 {
-			if path, ok := readWord(words[1].Parts, code, home, false); ok {
+			if path, ok := readWord(words[1].Parts, s.source, g.home, false); ok {
 				if !filepath.IsAbs(path) {
 					path = filepath.Join(g.cwd, path)
 				}
@@ -119,25 +89,11 @@ func rewriteSearch(payload map[string]any, home, cwd string) map[string]any {
 				break
 			}
 		}
-		edits = append(edits, insertion{at, options.String()})
+		edits = append(edits, shellEdit{at, at, options.String()})
 		return true
 	})
-	if len(edits) == 0 {
-		return nil
-	}
-	sort.SliceStable(edits, func(i, j int) bool { return edits[i].at > edits[j].at })
-	for _, edit := range edits {
-		code = code[:edit.at] + edit.text + code[edit.at:]
-	}
-	updated := make(map[string]any, len(args))
-	for k, value := range args {
-		updated[k] = value
-	}
-	updated[key] = code
-	return updated
+	return applyShellEdits(s.source, edits)
 }
-
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
 
 // Recognize search-expression operands, never pattern files (-f) or file
 // operands. This recognizes argument roles, not permitted options: unknown

@@ -7,6 +7,15 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
+func (g checker) atWorkdir(dir string) checker {
+	if filepath.IsAbs(dir) {
+		g.cwd = dir
+	} else {
+		g.cwd = filepath.Join(g.cwd, dir)
+	}
+	return g
+}
+
 // scopeCall handles literal env working directories and credential-location
 // assignments. Unknown computed location changes cannot safely be interpreted.
 func (g checker) scopeCall(call *syntax.CallExpr) (checker, bool) {

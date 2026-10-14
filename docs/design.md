@@ -29,6 +29,9 @@ The two deliberate rewriting exceptions are a basic config-read bridge and
 native ripgrep exclusions. Reader-option emulation and private search execution
 are absent. `guard/read.go` owns the config bridge; `guard/search.go` owns the
 search exception; `guard/operations.go` and `guard/find.go` own disclosure checks.
+Both rewrites share tool-input extraction, working-directory resolution, parsed
+shell source, and source editing through `guard/rewrite.go`. The config bridge
+uses the existing statement nodes; it does not parse each statement again.
 
 ## Request decisions
 
@@ -40,6 +43,9 @@ same context. Metadata failures do not imply that a content read is safe.
 Parse shell syntax before applying rules. Retain each word's role: literal,
 option value, path, pattern, redirect, or nested execution. Each operation is
 checked independently; a safe sibling or operand cannot exempt another.
+The decision path first substitutes validated config reads, then screens the
+resulting input and every sibling, and finally adds native search exclusions.
+This ordering is shared by both rewrite paths.
 
 Named checks cover:
 

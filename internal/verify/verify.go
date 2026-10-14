@@ -109,7 +109,7 @@ func searchProbes(ctx context.Context, binary string) []Check {
 }
 
 func configViewProbes(ctx context.Context, binary string) []Check {
-	checks := []Check{{Name: "sanitized_config_output"}, {Name: "malformed_config_output"}, {Name: "automatic_cat"}, {Name: "native_head_pipeline"}, {Name: "native_tail_pipeline"}, {Name: "native_sed_pipeline"}, {Name: "config_fixture_cleanup"}}
+	checks := []Check{{Name: "sanitized_config_output"}, {Name: "malformed_config_output"}, {Name: "automatic_cat"}, {Name: "native_head_pipeline"}, {Name: "native_tail_pipeline"}, {Name: "native_sed_pipeline"}, {Name: "multiple_config_reads"}, {Name: "config_search_pipeline"}, {Name: "config_fixture_cleanup"}}
 	home, err := os.MkdirTemp("", "agent-secrets-verify-")
 	if err != nil {
 		return checks
@@ -145,6 +145,8 @@ func configViewProbes(ctx context.Context, binary string) []Check {
 			{"cat ~/.codex/config.toml | head -n 1", "api_key = \"[REDACTED]\"\n"},
 			{"cat ~/.codex/config.toml | tail -n 1", "prevent_idle_sleep = true\n"},
 			{"cat ~/.codex/config.toml | sed -n '2p'", "prevent_idle_sleep = true\n"},
+			{"cat ~/.codex/config.toml; cat ~/.codex/config.toml", fixtures[0].stdout + fixtures[0].stdout},
+			{"cat ~/.codex/config.toml | rg REDACTED", "api_key = \"[REDACTED]\"\n"},
 		} {
 			checks[i+2].Passed = automaticRead(ctx, binary, home, c.command, c.want)
 		}

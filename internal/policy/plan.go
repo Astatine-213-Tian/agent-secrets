@@ -38,9 +38,5 @@ func DecodePlan(s string) (Plan, bool) {
 	if d.Decode(&extra) != io.EOF || !filepath.IsAbs(p.Cwd) {
 		return p, false
 	}
-	switch p.Kind {
-	case "read":
-		return p, filepath.IsAbs(p.Path)
-	}
-	return p, false
+	return p, p.Kind == "read" && filepath.IsAbs(p.Path)
 }
