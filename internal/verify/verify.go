@@ -52,6 +52,21 @@ func Process(ctx context.Context, binary, home string) Report {
 		{"long_code_literal_secret", "exec_command", map[string]any{"cmd": "echo '" + strings.Repeat("text", 1024) + "'\ncat .env"}, 2},
 		{"python_wildcard_import", "exec_command", map[string]any{"cmd": "python3 - <<'PY'\nfrom page_helpers import *\nPY"}, 0},
 		{"python_import_shell_wildcard", "exec_command", map[string]any{"cmd": "python3 - <<'PY'\nfrom page_helpers import *\nPY\ncat *"}, 2},
+		{"quoted_search_pattern", "exec_command", map[string]any{"cmd": `rg '⿰(豕|豸).*(兔|免)|⿰.*兔' /tmp/public-ids.txt`}, 0},
+		{"credential_name_search", "exec_command", map[string]any{"cmd": `rg -e '.env' README.md`}, 0},
+		{"search_protected_operand", "exec_command", map[string]any{"cmd": `rg '.*' '.env'`}, 2},
+		{"search_protected_substitution", "exec_command", map[string]any{"cmd": `rg "$(cat .env)" README.md`}, 2},
+		{"search_protected_sibling", "exec_command", map[string]any{"cmd": `rg '.*' README.md; cat .env`}, 2},
+		{"quoted_wildcard_literal", "exec_command", map[string]any{"cmd": `echo '*'`}, 0},
+		{"public_certificate", "exec_command", map[string]any{"cmd": `cat certificate.pem`}, 0},
+		{"private_key", "exec_command", map[string]any{"cmd": `cat private-key.pem`}, 2},
+		{"process_columns", "exec_command", map[string]any{"cmd": `ps -axo pid,etime,command | rg 'output-last-message'`}, 0},
+		{"process_environment_bsd", "exec_command", map[string]any{"cmd": `ps auxe`}, 2},
+		{"process_environment_macos", "exec_command", map[string]any{"cmd": `ps -E`}, 2},
+		{"grep_flag_protected_operand", "exec_command", map[string]any{"cmd": `grep -T public .env`}, 2},
+		{"grep_optional_color_operand", "exec_command", map[string]any{"cmd": `grep --color public .env`}, 2},
+		{"process_dynamic_environment", "exec_command", map[string]any{"cmd": `ps "$@" e`}, 2},
+		{"embedded_shell_glob", "exec_command", map[string]any{"cmd": `python3 -c 'import os; os.system("cat .*")'`}, 2},
 	}
 	r := Report{Passed: true, Scope: "executable hook and sanitized-reader protocols only; not proof of live client hook activation"}
 	for _, c := range cases {

@@ -43,10 +43,10 @@ func TestProcess(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	r := verify.Process(ctx, exe, home)
-	if !r.Passed || len(r.Checks) != 29 {
+	if !r.Passed || len(r.Checks) != 44 {
 		t.Fatalf("process contract failed: %+v", r)
 	}
 }

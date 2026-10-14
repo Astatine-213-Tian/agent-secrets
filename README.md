@@ -139,8 +139,23 @@ still screened, as are the worker's subsequent tool calls.
 Long prose literals inside commands also remain allowed when filesystem metadata
 reports that they cannot be filenames. Protected-path and environment checks
 still apply; explicit path arguments and other metadata errors fail closed.
-Python's `from module import *` syntax is recognized as an import, while shell
-wildcard reads such as `cat *` remain screened.
+File checks use the known credential conventions above, not blanket `.pem` or
+`.key` extension bans. For parsed `rg`/`grep` commands, static search expressions
+are distinguished from file operands: `rg '.*' README.md` and
+`rg -e '.env' README.md` are allowed, while `rg '.*' '.env'` is blocked.
+Common search options are recognized; unknown options retain conservative
+literal checks. Pattern files, redirects, substitutions, and sibling commands
+are still screened. Quoting a credential filename does not exempt it.
+
+Filesystem-glob checks apply to unquoted shell operands and explicit path
+arguments. Quoted punctuation and embedded source literals such as Python's
+`from module import *` do not become filename globs. Shell wildcard reads such
+as `cat *` remain screened, including zsh qualifiers, shell `-c` scripts, and
+heredocs. Outer-shell expansions are checked before nested code is interpreted.
+Recognizable literal shell commands embedded in Python/JavaScript are screened
+too; this remains a heuristic and does not interpret arbitrary program logic.
+Process inspection such as `ps -axo pid,etime,command` is allowed; the BSD
+environment flag (`ps e` / `ps auxe`) and macOS's `ps -E` remain blocked.
 
 This is an accidental-disclosure guard, **not an isolation mechanism**. Computed
 paths, arbitrary code, remote tools, encoded values, and content already in a

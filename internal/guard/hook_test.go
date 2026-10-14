@@ -138,7 +138,12 @@ func TestHookUsesWorkdirAndFailsClosed(t *testing.T) {
 }
 
 func FuzzHook(f *testing.F) {
-	for _, command := range []string{"cat ~/.codex/config.toml", "sed -n '1,80p' ~/.codex/config.toml", "cat README.md", "cat .env"} {
+	for _, command := range []string{
+		"cat ~/.codex/config.toml", "sed -n '1,80p' ~/.codex/config.toml", "cat README.md", "cat .env",
+		`rg '⿰(豕|豸).*(兔|免)' README.md`, `rg -e '.env' README.md`, `grep -T public .env`,
+		`ps -axo pid,etime,command`, `ps "$@" e`, `python3 -c 'import os; os.system("cat .*")'`,
+		`echo "rg '$EXAMPLE_API_KEY' README.md"`, "sh <<SH\nrg '$(env)' README.md\nSH", `cat .*(.)`,
+	} {
 		f.Add(command)
 	}
 	f.Fuzz(func(t *testing.T, command string) {

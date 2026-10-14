@@ -8,13 +8,13 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
 
 	"github.com/Astatine-213-Tian/agent-secrets/internal/policy"
+	"mvdan.cc/sh/v3/pattern"
 )
 
 const Reason = "Blocked by global credential protection: secret files and environment values must not enter agent transcripts."
@@ -24,9 +24,8 @@ var envRef = regexp.MustCompile(`(?:^|[^\w.\-])(\.env(?:\.[\w*?\[\]-]+)*)(?:$|[^
 var envAccess = regexp.MustCompile(`os\.(?:environ|getenv|Environ|Getenv|LookupEnv)|process\.env|\b(?:getenv|environ)\s*\(`)
 var shellVar = regexp.MustCompile(`\$\{?([A-Za-z_][A-Za-z_0-9]*)`)
 var envDump = regexp.MustCompile(`(?:^|[;|&\n(])\s*(?:(?:command|exec|sudo)\s+)?(?:/\S*/)?(?:printenv\b|env\s*(?:$|[;|&\n])|set\s*(?:$|-[a-zA-Z]*x)|(?:export|declare|typeset)\s+-p)`)
-var credentialCommand = regexp.MustCompile(`\b(?:ps\s+[^\n]*[eE]|security\s+find-(?:generic|internet)-password|gh\s+auth\s+token|docker\s+(?:container\s+)?inspect|(?:docker\s+)?compose\s+config)\b`)
+var credentialCommand = regexp.MustCompile(`\b(?:security\s+find-(?:generic|internet)-password|gh\s+auth\s+token|docker\s+(?:container\s+)?inspect|(?:docker\s+)?compose\s+config)\b`)
 var patchPath = regexp.MustCompile(`(?m)^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)\r?$`)
-var pythonWildcardImport = regexp.MustCompile(`(?m)^([ \t]*from[ \t]+(?:\.*[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*|\.+)[ \t]+import[ \t]+)\*([ \t]*(?:#[^\r\n]*)?\r?$)`)
 
 // Check consumes one hook request. Malformed, oversized, or uninspectable input
 // is denied. Output is a fixed message; request content is never reflected.
@@ -170,10 +169,13 @@ func (g checker) inspectPath(value string, codeWord bool) bool {
 				return true
 			}
 		}
-		if strings.ContainsAny(name, "*?[") {
-			for _, secret := range []string{".env", ".env.local", ".env.production"} {
-				if yes, _ := path.Match(name, secret); yes {
-					return true
+		if !codeWord && strings.ContainsAny(name, "*?[") {
+			if expression, err := pattern.Regexp(name, pattern.ExtendedOperators); err == nil {
+				matcher := regexp.MustCompile("^(?:" + expression + ")$")
+				for _, secret := range []string{".env", ".env.local", ".env.production"} {
+					if matcher.MatchString(secret) {
+						return true
+					}
 				}
 			}
 		}
@@ -245,7 +247,29 @@ func glob(pattern, value string) bool {
 }
 
 func (g checker) codeBlocked(code string) bool {
+	return g.inspectCode(code, 0)
+}
+
+func (g checker) inspectCode(code string, depth int) bool {
+	if depth > 32 {
+		return true
+	}
+	code, blocked := g.screenShell(code, depth)
+	if blocked {
+		return true
+	}
 	if envAccess.MatchString(code) || envDump.MatchString(code) || credentialCommand.MatchString(code) {
+		return true
+	}
+	for _, m := range shellVar.FindAllStringSubmatch(code, -1) {
+		if policy.SecretName(m[1]) {
+			return true
+		}
+	}
+	// Check expansion-bearing source before interpreting embedded strings.
+	// Inner single quotes cannot protect an outer double-quoted expansion.
+	code, blocked = g.screenEmbeddedCommands(code, depth)
+	if blocked {
 		return true
 	}
 	for _, m := range envRef.FindAllStringSubmatch(code, -1) {
@@ -253,18 +277,10 @@ func (g checker) codeBlocked(code string) bool {
 			return true
 		}
 	}
-	for _, m := range shellVar.FindAllStringSubmatch(code, -1) {
-		if policy.SecretName(m[1]) {
-			return true
-		}
-	}
-	// Inspect literal words even within embedded code. This is intentionally
-	// heuristic: arbitrary computed paths are outside the hook's coverage.
-	// Python import-all syntax is not a filesystem glob. Exempt only the
-	// star in a complete import statement; all other arguments and the
-	// original code's credential/environment checks remain active.
-	pathCode := pythonWildcardImport.ReplaceAllString(code, "${1} ${2}")
-	words := strings.FieldsFunc(pathCode, func(r rune) bool { return strings.ContainsRune(" \t\r\n\"'`;|&()<>=,", r) })
+	// Embedded code still receives literal credential-path checks. Only parsed
+	// shell operands and explicit path arguments receive filesystem-glob checks;
+	// arbitrary source text and quoted regexes are not shell filename patterns.
+	words := strings.FieldsFunc(code, func(r rune) bool { return strings.ContainsRune(" \t\r\n\"'`;|&()<>=,", r) })
 	scan, broad, listing, explicit := false, false, false, false
 	for _, word := range words {
 		if g.inspectPath(word, true) {
