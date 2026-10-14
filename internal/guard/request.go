@@ -77,11 +77,24 @@ func Evaluate(data []byte, home, cwd, binary string) (decision Decision) {
 	}
 	if filepath.IsAbs(binary) {
 		if updated := rewriteRead(payload, home, cwd, binary); updated != nil {
+			rewritten := make(map[string]any, len(payload))
+			for k, v := range payload {
+				rewritten[k] = v
+			}
+			rewritten["tool_input"] = updated
+			if search := rewriteSearch(rewritten, home, cwd); search != nil {
+				updated = search
+			}
 			return Decision{Kind: Rewrite, Input: updated}
 		}
 	}
 	g := checker{home: home, cwd: cwd, tool: strings.ToLower(tool)}
 	if !g.inspect(args, "") {
+		if filepath.IsAbs(binary) {
+			if updated := rewriteSearch(payload, home, cwd); updated != nil {
+				return Decision{Kind: Rewrite, Input: updated}
+			}
+		}
 		return Decision{Kind: Allow}
 	}
 	return

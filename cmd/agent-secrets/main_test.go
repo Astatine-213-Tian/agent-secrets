@@ -59,8 +59,8 @@ func TestPrivateReaderCLI(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(input), 0600); err != nil {
 			t.Fatal(err)
 		}
-		for _, reader := range []string{"cat", "head"} {
-			args := []string{"__run", (policy.Plan{Kind: "read", Cwd: home, Path: filepath.Join(dir, "config.toml"), Reader: reader}).Encode()}
+		{
+			args := []string{"__run", (policy.Plan{Kind: "read", Cwd: home, Path: filepath.Join(dir, "config.toml")}).Encode()}
 			var out, stderr bytes.Buffer
 			code := run(args, strings.NewReader(""), &out, &stderr)
 			if strings.Contains(out.String()+stderr.String(), "DO_NOT_ECHO") {

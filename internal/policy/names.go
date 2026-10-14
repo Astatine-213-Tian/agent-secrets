@@ -46,17 +46,6 @@ func SensitiveQuery(name string) bool {
 	return SecretName(name)
 }
 
-// PublicEnvironment names ordinary process metadata. Unrecognized APIs that
-// retrieve a variable remain conservative; ordinary shell references use the
-// precise credential grammar rather than requiring a visibility allowlist.
-func PublicEnvironment(name string) bool {
-	switch name {
-	case "PATH", "HOME", "SHELL", "PWD", "OLDPWD", "LANG", "LANGUAGE", "TERM", "TMPDIR", "TMP", "TEMP", "USER", "LOGNAME", "NODE_ENV", "LOG_LEVEL", "PORT", "CI", "MAX_TOKENS", "TOKENIZERS_PARALLELISM":
-		return true
-	}
-	return strings.HasPrefix(name, "LC_") && environmentName.MatchString(name)
-}
-
 func referenceField(path []string, value any) bool {
 	if len(path) >= 3 && path[0] == "profiles" {
 		path = path[2:]

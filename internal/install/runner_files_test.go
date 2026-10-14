@@ -2,7 +2,6 @@ package install
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -47,7 +46,7 @@ func TestCodexConfigViewFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, _, err := RunPlan(context.Background(), home, (policy.Plan{Kind: "read", Cwd: home, Path: path, Reader: "cat"}).Encode())
+			out, err := RunPlan(home, (policy.Plan{Kind: "read", Cwd: home, Path: path}).Encode())
 			if kind != "regular" {
 				if err != ErrPlan || len(out) != 0 {
 					t.Fatal("unsafe file accepted")
@@ -62,22 +61,5 @@ func TestCodexConfigViewFiles(t *testing.T) {
 				t.Fatal("source configuration changed")
 			}
 		})
-	}
-}
-
-func TestReaderRejectsFileAndExecutionOptions(t *testing.T) {
-	home := t.TempDir()
-	for _, args := range [][]string{
-		{"cat", "/tmp/extra-file"},
-		{"sed", "-n", "r /tmp/extra-file"},
-		{"sed", "-n", "w /tmp/output"},
-		{"sed", "-n", "1e echo executed"},
-		{"tail", "-f"},
-		{"sh", "-c", "echo executed"},
-	} {
-		out, _, err := RunPlan(context.Background(), home, (policy.Plan{Kind: "read", Cwd: home, Path: filepath.Join(home, ".codex/config.toml"), Reader: args[0], Args: args[1:]}).Encode())
-		if err != ErrPlan || len(out) != 0 {
-			t.Fatal("private reader accepted unsafe arguments")
-		}
 	}
 }

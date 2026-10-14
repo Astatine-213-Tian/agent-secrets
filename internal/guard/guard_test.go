@@ -65,7 +65,7 @@ func TestRequests(t *testing.T) {
 		{"ssh glob", "Read", map[string]any{"path": "~/.ssh/id_custom"}, 2},
 		{"git", "Bash", map[string]any{"command": "git status --short"}, 0},
 		{"inventory", "Bash", map[string]any{"command": `rg --files --hidden -g "*.go"`}, 0},
-		{"broad scan", "Bash", map[string]any{"command": "rg --hidden TOKEN ."}, 2},
+		{"broad scan", "Bash", map[string]any{"command": "rg --hidden TOKEN ."}, 0},
 		{"raw input", "Bash", "cat .env", 2},
 		{"metadata", "Bash", map[string]any{"command": "go test ./...", "description": "does not read .env"}, 0},
 	} {

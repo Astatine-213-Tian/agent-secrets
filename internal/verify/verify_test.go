@@ -24,13 +24,13 @@ func TestMain(m *testing.M) {
 	}
 	if len(os.Args) == 3 && os.Args[1] == "__run" {
 		home, _ := os.UserHomeDir()
-		b, status, err := install.RunPlan(context.Background(), home, os.Args[2])
+		b, err := install.RunPlan(home, os.Args[2])
 		if err != nil {
 			fmt.Fprintln(os.Stderr, install.ErrPlan)
 			os.Exit(1)
 		}
 		_, _ = os.Stdout.Write(b)
-		os.Exit(status)
+		os.Exit(0)
 	}
 	os.Exit(m.Run())
 }

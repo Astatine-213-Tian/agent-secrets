@@ -11,7 +11,7 @@ import (
 var quotedCode = regexp.MustCompile(`(?s)"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'` + "|`(?:\\\\.|[^`\\\\])*`")
 
 var envLookup = regexp.MustCompile(`(?:os\.(?:getenv|Getenv|LookupEnv)|getenv)\s*\(\s*["']([A-Za-z_][A-Za-z_0-9]*)["']|(?:os\.environ|process\.env)\s*\[\s*["']([A-Za-z_][A-Za-z_0-9]*)["']\s*\]|process\.env\.([A-Za-z_][A-Za-z_0-9]*)|os\.environ\.get\s*\(\s*["']([A-Za-z_][A-Za-z_0-9]*)["']`)
-var anyEnvironment = regexp.MustCompile(`\bos\.(?:environ|getenv|Environ|Getenv|LookupEnv)\b|\bprocess\.env\b|\b(?:getenv|environ)\s*\(`)
+var environmentCollection = regexp.MustCompile(`\bos\.environ\b|\bprocess\.env\b|\bos\.Environ\s*\(`)
 var executableLiteral = regexp.MustCompile(`(?s)(?:\b(?:cmd|command|script|code)\s*:\s*|(?:os\.system|execSync|exec|eval|subprocess\.(?:run|call|check_output|Popen))\s*\(\s*\[?\s*)$`)
 var fileLiteral = regexp.MustCompile(`(?s)(?:\b(?:open|Path|readFile|readFileSync|ReadFile|writeFile|writeFileSync)\s*\(\s*|\b(?:path|file_path|filename)\s*:\s*)$`)
 
@@ -48,7 +48,7 @@ func (g checker) scriptBlocked(code string, depth int) bool {
 				name = v
 			}
 		}
-		if !policy.PublicEnvironment(name) {
+		if policy.SecretName(name) {
 			return true
 		}
 		mask(span[0], span[1])
@@ -58,7 +58,14 @@ func (g checker) scriptBlocked(code string, depth int) bool {
 			mask(q[0], q[1])
 		}
 	}
-	if anyEnvironment.Match(view) {
+	for _, span := range environmentCollection.FindAllIndex(view, -1) {
+		tail := strings.TrimSpace(string(view[span[1]:]))
+		if strings.HasPrefix(tail, "[") {
+			continue
+		} // computed scalar lookup
+		if strings.HasPrefix(tail, ".") && !strings.HasPrefix(tail, ".items(") && !strings.HasPrefix(tail, ".values(") && !strings.HasPrefix(tail, ".copy(") {
+			continue
+		}
 		return true
 	}
 	return g.embeddedBlocked(code, depth)

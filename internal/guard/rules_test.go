@@ -25,7 +25,7 @@ func TestOperationRules(t *testing.T) {
 		{"find . -name .env -exec cat {} +", 2},
 		{"cat ~/.ssh/id_ed25519.pub", 0}, {"cat ~/.ssh/id_ed25519", 2},
 		{"printenv NODE_ENV MAX_TOKENS", 0}, {"printenv TOKENIZERS_PARALLELISM", 0},
-		{"printenv API_KEY", 2}, {"printenv UNKNOWN_SETTING", 2}, {"printenv", 2},
+		{"printenv API_KEY", 2}, {"printenv UNKNOWN_SETTING", 0}, {"printenv", 2},
 		{"echo $MAX_TOKENS $TOKENIZERS_PARALLELISM", 0}, {"echo $MY_ACCESS_TOKEN", 2},
 		{`python -c 'import os; print(os.getenv("NODE_ENV"))'`, 0},
 		{`python -c 'import os; print(os.environ.get("NODE_ENV", "development"))'`, 0},
@@ -64,8 +64,8 @@ func TestContextAndIndependentOperands(t *testing.T) {
 	check(t, "exec_command", map[string]any{"cmd": "cp README.md ~"}, home, cwd, 0)
 	check(t, "exec_command", map[string]any{"cmd": "cd '" + filepath.Join(home, ".aws") + "' && cat credentials"}, home, cwd, 2)
 	check(t, "exec_command", map[string]any{"cmd": "cd '" + cwd + "' && cat README.md"}, home, home, 0)
-	check(t, "exec_command", map[string]any{"cmd": "rg --hidden pattern README.md ."}, home, cwd, 2)
-	check(t, "exec_command", map[string]any{"cmd": "rg --hidden pattern .; cat README.md"}, home, cwd, 2)
+	check(t, "exec_command", map[string]any{"cmd": "rg --hidden pattern README.md ."}, home, cwd, 0)
+	check(t, "exec_command", map[string]any{"cmd": "rg --hidden pattern .; cat README.md"}, home, cwd, 0)
 	for _, name := range []string{"alias", "id_ed25519.pub", ".env.example"} {
 		if e := os.Symlink(".env", filepath.Join(cwd, name)); e != nil {
 			t.Fatal(e)

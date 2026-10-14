@@ -1,7 +1,6 @@
 package guard
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -19,55 +18,23 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 	if err != nil {
 		return code, false
 	}
-	// A successful literal cd followed by && has one unambiguous base. Other
-	// compound directory changes are rejected below rather than guessed.
-	if len(f.Stmts) == 1 {
-		if b, ok := f.Stmts[0].Cmd.(*syntax.BinaryCmd); ok && b.Op == syntax.AndStmt {
-			if c, ok := b.X.Cmd.(*syntax.CallExpr); ok && len(c.Args) == 2 && len(c.Assigns) == 0 && len(b.X.Redirs) == 0 {
-				name, _, _ := literalWord(c.Args[0].Parts, false)
-				if name == "cd" {
-					p, ok := readWord(c.Args[1].Parts, code, g.home, false)
-					if !ok {
-						return "", true
-					}
-					if !filepath.IsAbs(p) {
-						p = filepath.Join(g.cwd, p)
-					}
-					g.cwd = filepath.Clean(p)
-					return "", g.inspectCode(code[b.Y.Pos().Offset():b.Y.End().Offset()], depth+1)
-				}
-			}
-		}
-	}
-	stdin := map[*syntax.CallExpr]bool{}
-	syntax.Walk(f, func(node syntax.Node) bool {
-		if s, ok := node.(*syntax.Stmt); ok {
-			if c, ok := s.Cmd.(*syntax.CallExpr); ok {
-				for _, r := range s.Redirs {
-					if r.Op == syntax.RdrIn || r.Hdoc != nil {
-						stdin[c] = true
-					}
-				}
-			}
-		}
-		if b, ok := node.(*syntax.BinaryCmd); ok && (b.Op == syntax.Pipe || b.Op == syntax.PipeAll) {
-			syntax.Walk(b.Y, func(n syntax.Node) bool {
-				if c, ok := n.(*syntax.CallExpr); ok {
-					stdin[c] = true
-				}
-				return true
-			})
-		}
-		return true
-	})
 	blocked := false
 	inspectWord := func(g checker, word *syntax.Word) {
 		value, wildcard, ok := literalWord(word.Parts, false)
 		if !ok {
+			// A substitution used as an operand can produce a protected path.
+			// Check explicit path words without rejecting every substitution.
 			syntax.Walk(word, func(n syntax.Node) bool {
-				switch n.(type) {
-				case *syntax.CmdSubst, *syntax.ProcSubst:
-					blocked = true
+				if sub, ok := n.(*syntax.CmdSubst); ok {
+					syntax.Walk(sub, func(child syntax.Node) bool {
+						if w, ok := child.(*syntax.Word); ok {
+							if path, glob, literal := literalWord(w.Parts, false); literal && (g.inspectPath(path, true) || glob && g.protected(path)) {
+								blocked = true
+							}
+						}
+						return !blocked
+					})
+					return false
 				}
 				return !blocked
 			})
@@ -124,6 +91,12 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 			if n.Param != nil && policy.SecretName(n.Param.Value) {
 				blocked = true
 			}
+		case *syntax.Subshell:
+			blocked = g.inspectCode(code[n.Lparen.Offset()+1:n.Rparen.Offset()], depth+1)
+			return false
+		case *syntax.ProcSubst:
+			blocked = g.inspectCode(code[n.OpPos.Offset()+2:n.Rparen.Offset()], depth+1)
+			return false
 		case *syntax.CmdSubst:
 			start := n.Left.Offset() + 2 // $( or ${
 			if n.Backquotes {
@@ -160,7 +133,7 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 			if len(n.Args) == 0 {
 				g = op
 			}
-			for i, w := range n.Args {
+			for i, w := range n.Args[:len(n.Args)-len(commandArgs(n.Args))] {
 				v, _, _ := literalWord(w.Parts, false)
 				if v == "-S" || v == "--split-string" {
 					if i+1 < len(n.Args) {
@@ -190,13 +163,16 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 				blocked = true
 				return false
 			}
-			if name == "cd" && len(f.Stmts) > 1 {
-				blocked = true
-				return false
-			}
-			if name == "cd" && f.Stmts[0].Cmd != n {
-				blocked = true
-				return false
+			if name == "cd" && len(args) == 2 {
+				if path, ok := g.pathWord(args[1].Parts); ok {
+					if strings.HasPrefix(path, "~/") {
+						path = filepath.Join(g.home, path[2:])
+					}
+					if !filepath.IsAbs(path) {
+						path = filepath.Join(g.cwd, path)
+					}
+					g.cwd = filepath.Clean(path)
+				}
 			}
 			if name == "ps" && processEnvironment(args[1:]) {
 				blocked = true
@@ -204,11 +180,7 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 			}
 			patterns := searchPatterns(name, args[1:])
 			metadata := metadataCommand(name, args[1:])
-			if name == "find" && !metadata {
-				blocked = true
-				return false
-			}
-			if !metadata && op.searchNeedsControl(name, args[1:], stdin[n]) {
+			if name == "find" && op.findActionBlocked(args[1:], code, depth) {
 				blocked = true
 				return false
 			}
@@ -216,6 +188,9 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 				value, wildcard, literal := literalWord(word.Parts, false)
 				if patterns[word] && literal && !wildcard {
 					continue
+				}
+				if (name == "rg" || name == "grep" || name == "egrep" || name == "fgrep") && strings.HasPrefix(value, "-f") && len(value) > 2 && op.protected(value[2:]) {
+					blocked = true
 				}
 				// Shell -c operands are code, including their own regex roles.
 				if isShell(name) && i > 0 && literal {
@@ -236,7 +211,7 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 						continue
 					}
 				}
-				if metadata || literalOutput(name) {
+				if metadata && !searchFileInput(name, n.Args, i) || literalOutput(name) {
 					continue
 				}
 				if transferSource(name, i, len(n.Args)) && literal && op.protectedDirectory(value) {
@@ -279,8 +254,6 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 	})
 	return "", blocked
 }
-
-func isDirectory(p string) bool { st, err := os.Stat(p); return err == nil && st.IsDir() }
 
 // Legacy backquotes remove one escaping layer before the body is parsed.
 // Backslashes otherwise remain literal; this never performs expansions.
@@ -427,89 +400,4 @@ func processEnvironment(args []*syntax.Word) bool {
 		}
 	}
 	return false
-}
-
-// Recognize search-expression operands, never pattern files (-f) or file
-// operands. Unknown options stop classification instead of exempting a path.
-func searchPatterns(name string, args []*syntax.Word) map[*syntax.Word]bool {
-	patterns := make(map[*syntax.Word]bool)
-	if name != "rg" && name != "grep" && name != "egrep" && name != "fgrep" {
-		return patterns
-	}
-	explicit, options := false, true
-	var positional *syntax.Word
-	for i := 0; i < len(args); i++ {
-		v, _, ok := literalWord(args[i].Parts, false)
-		if !ok {
-			if !options {
-				break
-			}
-			return patterns
-		}
-		if options && v == "--" {
-			options = false
-			continue
-		}
-		if options && strings.HasPrefix(v, "--") {
-			flag, _, attached := strings.Cut(v, "=")
-			// grep's optional color value must use '='; rg requires a value.
-			if name != "rg" && (flag == "--color" || flag == "--colour") {
-				continue
-			}
-			switch flag {
-			case "--regexp", "--file", "--after-context", "--before-context", "--context", "--max-count", "--glob", "--iglob", "--type", "--type-not", "--encoding", "--color":
-				if flag == "--regexp" || flag == "--file" {
-					explicit = true
-				}
-				if !attached {
-					i++
-					if i == len(args) {
-						return patterns
-					}
-				}
-				if flag == "--regexp" {
-					patterns[args[i]] = true
-				}
-			case "--hidden", "--no-ignore", "--line-number", "--ignore-case", "--fixed-strings", "--extended-regexp", "--perl-regexp", "--files-with-matches", "--files-without-match", "--count", "--no-heading", "--heading", "--word-regexp", "--invert-match":
-			default:
-				return patterns
-			}
-			continue
-		}
-		if options && strings.HasPrefix(v, "-") && v != "-" {
-			for j := 1; j < len(v); j++ {
-				flag := v[j]
-				valueOptions := "efABCm"
-				if name == "rg" {
-					valueOptions += "gtT"
-				}
-				if strings.ContainsRune(valueOptions, rune(flag)) {
-					if flag == 'e' || flag == 'f' {
-						explicit = true
-					}
-					if j == len(v)-1 {
-						i++
-						if i == len(args) {
-							return patterns
-						}
-					}
-					if flag == 'e' {
-						patterns[args[i]] = true
-					}
-					break
-				}
-				if !strings.ContainsRune("nNivwxlLqscHEFPrRhoIUaubzZT0123456789", rune(flag)) {
-					return patterns
-				}
-			}
-			continue
-		}
-		if positional == nil {
-			positional = args[i]
-		}
-	}
-	if !explicit && positional != nil {
-		patterns[positional] = true
-	}
-	return patterns
 }

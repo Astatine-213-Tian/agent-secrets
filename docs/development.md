@@ -16,7 +16,7 @@ parses shell syntax and glob patterns without executing expansions.
 | --- | --- |
 | `cmd/agent-secrets` | CLI dispatch and process exit/output. |
 | `internal/guard` | One `Evaluate` entrypoint; request/context normalization, operation checks, and constrained rewrites; metadata only. |
-| `internal/policy` | Pure credential/path recognition, selective document/text redaction, and closed read/search plans. |
+| `internal/policy` | Pure credential/path recognition, selective document/text redaction, native search exclusions, and closed config-read plans. |
 | `internal/install` | Installation/readback; shared metadata resolution and the private runner's controlled file reads. |
 | `internal/verify` | Subprocess verification of the executable protocol. |
 
@@ -58,7 +58,7 @@ overrides the process working directory; tool `workdir` is resolved from it.
 | Outcome | Exit code | Output |
 | --- | --- | --- |
 | Ordinary allow | `0` | Silent. |
-| Supported config read or directory search | `0` | JSON `hookSpecificOutput` with `hookEventName: "PreToolUse"`, `permissionDecision: "allow"`, and `updatedInput`. |
+| Supported config read or native ripgrep call | `0` | JSON `hookSpecificOutput` with `hookEventName: "PreToolUse"`, `permissionDecision: "allow"`, and `updatedInput`. |
 | Denied, malformed, oversized, or uninspectable request | `2` | No stdout; fixed denial on stderr. |
 
 The denial is exactly:
@@ -71,7 +71,8 @@ Rewriting requires object-valued `tool_input` and a supported tool/command
 field. If `hook_event_name` is supplied, it must be `PreToolUse` for rewriting.
 Other arguments and JSON number precision are preserved; sibling arguments
 remain screened. The rewritten tool sanitizes or filters before producing stdout.
-Nested code requests are screened but are not themselves rewritten. This is input rewriting,
+Native search rewrites preserve command source and options while adding path
+exclusions. Nested code requests are screened but are not themselves rewritten. This is input rewriting,
 not general `PostToolUse` output filtering.
 
 `agent-secrets guard` retains the silent allow/deny-only protocol and never
@@ -82,7 +83,8 @@ and this fixed stderr message:
 Cannot safely run protected operation; no file contents or error details were printed.
 ```
 
-The private reader has a 30-second process deadline. Hook responses and reader
+The private reader reads bounded regular files and launches no subprocess.
+Native commands retain their own errors and exit behavior. Hook responses and reader
 errors do not echo input, config values, parser diagnostics, or internal errors.
 
 ## Verification boundary

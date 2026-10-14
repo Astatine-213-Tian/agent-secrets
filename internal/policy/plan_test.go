@@ -1,26 +1,14 @@
 package policy_test
 
 import (
+	"encoding/base64"
 	"github.com/Astatine-213-Tian/agent-secrets/internal/policy"
 	"testing"
 )
 
-func TestClosedPlanOptions(t *testing.T) {
-	for _, args := range [][]string{{"--pre", "program", "pattern", "."}, {"-f", "file", "."}, {"--ignore-file=file", "pattern", "."}, {"--follow", "pattern", "."}, {"--count=oops", "pattern", "."}, {"-lc", "pattern", "."}} {
-		if _, ok := policy.ParseSearch(args); ok {
-			t.Fatalf("unsafe/invalid option accepted: %v", args)
-		}
-	}
-	for _, args := range [][]string{{"--hidden", "-ni", "pattern", "."}, {"-e", "one", "-e", "two", "-g", "*.go", "."}, {"--", "-pattern", "."}} {
-		if _, ok := policy.ParseSearch(args); !ok {
-			t.Fatalf("supported search rejected: %v", args)
-		}
-	}
-}
-
 func FuzzPlan(f *testing.F) {
-	f.Add((policy.Plan{Kind: "read", Path: "/synthetic/.npmrc", Cwd: "/synthetic", Reader: "cat"}).Encode())
-	f.Add((policy.Plan{Kind: "search", Cwd: "/synthetic", Args: []string{"--hidden", "pattern", "."}}).Encode())
+	f.Add((policy.Plan{Kind: "read", Path: "/synthetic/.npmrc", Cwd: "/synthetic"}).Encode())
+	f.Add((policy.Plan{Kind: "search", Cwd: "/synthetic"}).Encode())
 	f.Add("")
 	f.Fuzz(func(t *testing.T, s string) {
 		p, ok := policy.DecodePlan(s)
@@ -32,4 +20,17 @@ func FuzzPlan(f *testing.F) {
 			t.Fatal("accepted plan does not round trip")
 		}
 	})
+}
+
+func TestPlansCannotExecuteCommands(t *testing.T) {
+	for _, raw := range []string{
+		`{"kind":"read","path":"/synthetic/.npmrc","cwd":"/synthetic","reader":"cat"}`,
+		`{"kind":"read","path":"/synthetic/.npmrc","cwd":"/synthetic","args":["-n"]}`,
+		`{"kind":"read","path":"relative","cwd":"/synthetic"}`,
+		`{"kind":"search","path":"/synthetic/.npmrc","cwd":"/synthetic"}`,
+	} {
+		if _, ok := policy.DecodePlan(base64.RawURLEncoding.EncodeToString([]byte(raw))); ok {
+			t.Fatal("accepted executable or invalid plan")
+		}
+	}
 }

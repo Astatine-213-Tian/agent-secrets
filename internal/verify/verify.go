@@ -103,13 +103,13 @@ func searchProbes(ctx context.Context, binary string) []Check {
 			return checks
 		}
 	}
-	checks[0].Passed = automaticRead(ctx, binary, home, "rg --hidden needle .", "README.md:needle public\n")
-	checks[1].Passed = automaticRead(ctx, binary, home, "rg --hidden needle README.md .", "README.md:needle public\n")
+	checks[0].Passed = automaticRead(ctx, binary, home, "rg --hidden --max-count 1 needle .", "./README.md:needle public\n")
+	checks[1].Passed = automaticRead(ctx, binary, home, "true; rg --hidden --no-filename needle README.md .", "needle public\nneedle public\n")
 	return checks
 }
 
 func configViewProbes(ctx context.Context, binary string) []Check {
-	checks := []Check{{Name: "sanitized_config_output"}, {Name: "malformed_config_output"}, {Name: "automatic_cat"}, {Name: "automatic_head"}, {Name: "automatic_tail"}, {Name: "automatic_sed"}, {Name: "config_fixture_cleanup"}}
+	checks := []Check{{Name: "sanitized_config_output"}, {Name: "malformed_config_output"}, {Name: "automatic_cat"}, {Name: "native_head_pipeline"}, {Name: "native_tail_pipeline"}, {Name: "native_sed_pipeline"}, {Name: "config_fixture_cleanup"}}
 	home, err := os.MkdirTemp("", "agent-secrets-verify-")
 	if err != nil {
 		return checks
@@ -127,7 +127,7 @@ func configViewProbes(ctx context.Context, binary string) []Check {
 		if os.WriteFile(filepath.Join(dir, "config.toml"), []byte(fixture.input), 0600) != nil {
 			continue
 		}
-		c := exec.CommandContext(ctx, binary, "__run", (policy.Plan{Kind: "read", Cwd: home, Path: filepath.Join(dir, "config.toml"), Reader: "cat"}).Encode())
+		c := exec.CommandContext(ctx, binary, "__run", (policy.Plan{Kind: "read", Cwd: home, Path: filepath.Join(dir, "config.toml")}).Encode())
 		c.Env = append(os.Environ(), "HOME="+home)
 		var stdout, stderr bytes.Buffer
 		c.Stdout, c.Stderr = &stdout, &stderr
@@ -142,9 +142,9 @@ func configViewProbes(ctx context.Context, binary string) []Check {
 	if os.WriteFile(filepath.Join(dir, "config.toml"), []byte(fixtures[0].input), 0600) == nil {
 		for i, c := range []struct{ command, want string }{
 			{"cat ~/.codex/config.toml", fixtures[0].stdout},
-			{"head -n 1 ~/.codex/config.toml", "api_key = \"[REDACTED]\"\n"},
-			{"tail -n 1 ~/.codex/config.toml", "prevent_idle_sleep = true\n"},
-			{"sed -n '2p' ~/.codex/config.toml", "prevent_idle_sleep = true\n"},
+			{"cat ~/.codex/config.toml | head -n 1", "api_key = \"[REDACTED]\"\n"},
+			{"cat ~/.codex/config.toml | tail -n 1", "prevent_idle_sleep = true\n"},
+			{"cat ~/.codex/config.toml | sed -n '2p'", "prevent_idle_sleep = true\n"},
 		} {
 			checks[i+2].Passed = automaticRead(ctx, binary, home, c.command, c.want)
 		}
@@ -158,7 +158,7 @@ func configViewProbes(ctx context.Context, binary string) []Check {
 func automaticRead(ctx context.Context, binary, home, command, want string) bool {
 	request, _ := json.Marshal(map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": command}, "cwd": home})
 	hook := exec.CommandContext(ctx, binary, "hook")
-	hook.Env = append(os.Environ(), "HOME="+home)
+	hook.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home}
 	hook.Stdin = bytes.NewReader(request)
 	var stdout, stderr bytes.Buffer
 	hook.Stdout, hook.Stderr = &stdout, &stderr
@@ -177,7 +177,7 @@ func automaticRead(ctx context.Context, binary, home, command, want string) bool
 	if json.Unmarshal(stdout.Bytes(), &result) != nil || result.Output.Event != "PreToolUse" || result.Output.Decision != "allow" {
 		return false
 	}
-	if !strings.Contains(result.Output.Input.Command, "'__run'") {
+	if result.Output.Input.Command == "" || result.Output.Input.Command == command {
 		return false
 	}
 	read := exec.CommandContext(ctx, "/bin/sh", "-c", result.Output.Input.Command)
@@ -208,5 +208,21 @@ func probe(ctx context.Context, binary string, input []byte, want int) bool {
 	if want == 2 {
 		message = guard.Reason + "\n"
 	}
-	return status == want && stdout.Len() == 0 && stderr.String() == message
+	if status != want || stderr.String() != message {
+		return false
+	}
+	if stdout.Len() == 0 {
+		return true
+	}
+	if want != 0 {
+		return false
+	}
+	var response struct {
+		Output struct {
+			Event    string         `json:"hookEventName"`
+			Decision string         `json:"permissionDecision"`
+			Input    map[string]any `json:"updatedInput"`
+		} `json:"hookSpecificOutput"`
+	}
+	return json.Unmarshal(stdout.Bytes(), &response) == nil && response.Output.Event == "PreToolUse" && response.Output.Decision == "allow" && len(response.Output.Input) > 0
 }

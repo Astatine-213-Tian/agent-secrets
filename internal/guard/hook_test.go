@@ -15,19 +15,23 @@ func TestHookRewritesCommonReads(t *testing.T) {
 	for _, command := range []string{
 		"cat ~/.codex/config.toml",
 		"cat -- ~/.codex/config.toml",
-		"cat -n ~/.codex/config.toml",
 		`cat "$HOME/.codex/config.toml"`,
 		`cat "${HOME}/.codex/config.toml"`,
 		"command /bin/cat ~/.codex/config.toml",
-		"head -n 10 ~/.codex/config.toml",
-		"head -20 ~/.codex/config.toml",
-		"tail -n +2 ~/.codex/config.toml",
-		"tail -c 100 ~/.codex/config.toml",
-		"sed -n '1,80p' ~/.codex/config.toml",
-		"sed -n -e '3,$p' ~/.codex/config.toml",
+		"cat ~/.codex/config.toml | head -n 10",
+		"cat ~/.codex/config.toml | head -20",
+		"cat ~/.codex/config.toml | tail -n +2",
+		"cat ~/.codex/config.toml | tail -c 100",
+		"cat ~/.codex/config.toml | sed -n '1,80p'",
+		"cat ~/.codex/config.toml | sed -n -e '3,$p'",
 		"cat < ~/.codex/config.toml",
-		"head -n 10 0< ~/.codex/config.toml",
+		"cat 0< ~/.codex/config.toml | head -n 10",
 		"cat .codex/config.toml",
+		"cat ~/.codex/config.toml; echo done",
+		"cat ~/.codex/config.toml && echo done",
+		"cat ~/.codex/config.toml | cat -u",
+		"cat ~/.codex/config.toml | sed -n '1p; 3p'",
+		"cat ~/.codex/config.toml | rg REDACTED",
 		"cat '" + filepath.Join(home, ".codex/config.toml") + "'",
 	} {
 		t.Run(command, func(t *testing.T) {
@@ -57,7 +61,7 @@ func TestHookRewritesCommonReads(t *testing.T) {
 				}
 				updated := result.Output.Input
 				rewrite, _ := updated[key].(string)
-				if !strings.Contains(rewrite, "'__run'") || strings.Contains(rewrite, "config.toml") || !strings.Contains(rewrite, `'"'"'`) {
+				if !strings.Contains(rewrite, "'__run'") || strings.Contains(rewrite, "cat ~/.codex/config.toml") || !strings.Contains(rewrite, `'"'"'`) {
 					t.Fatal("unsafe target or quoting")
 				}
 				if updated["counter"] != json.Number("9007199254740993") || updated["timeout"] != json.Number("5000") || len(updated) != len(args) {
@@ -71,11 +75,7 @@ func TestHookRewritesCommonReads(t *testing.T) {
 func TestHookRejectsUnsafeReads(t *testing.T) {
 	for _, command := range []string{
 		"cat ~/.codex/config.toml; cat ~/.codex/auth.json",
-		"cat ~/.codex/config.toml && echo done",
-		"cat ~/.codex/config.toml | head",
 		"cat ~/.codex/config.toml > /tmp/copy",
-		"cat ~/.codex/config.toml &",
-		"! cat ~/.codex/config.toml",
 		"cat ~/.codex/config.toml /tmp/other",
 		"cat /tmp/other ~/.codex/config.toml",
 		"HOME=/tmp/other cat ~/.codex/config.toml",
@@ -88,6 +88,10 @@ func TestHookRejectsUnsafeReads(t *testing.T) {
 		"sed -n 'w /tmp/other' ~/.codex/config.toml",
 		"head -n 10 -q ~/.codex/config.toml",
 		"tail -f ~/.codex/config.toml",
+		"head -n 10 ~/.codex/config.toml",
+		"cat -n ~/.codex/config.toml",
+		"cat ~/.codex/config.toml | cat .env",
+		"cat ~/.codex/config.toml | sed -n '1p' .env",
 		"/tmp/cat ~/.codex/config.toml",
 		"python -c 'open(\"~/.codex/config.toml\").read()'",
 	} {
@@ -139,7 +143,7 @@ func TestHookUsesWorkdirAndFailsClosed(t *testing.T) {
 
 func FuzzHook(f *testing.F) {
 	for _, command := range []string{
-		"cat ~/.codex/config.toml", "sed -n '1,80p' ~/.codex/config.toml", "cat README.md", "cat .env",
+		"cat ~/.codex/config.toml", "cat ~/.codex/config.toml | sed -n '1,80p'", "cat README.md", "cat .env",
 		`rg '⿰(豕|豸).*(兔|免)' README.md`, `rg -e '.env' README.md`, `grep -T public .env`,
 		`ps -axo pid,etime,command`, `ps "$@" e`, `python3 -c 'import os; os.system("cat .*")'`,
 		`echo "rg '$EXAMPLE_API_KEY' README.md"`, "sh <<SH\nrg '$(env)' README.md\nSH", `cat .*(.)`,

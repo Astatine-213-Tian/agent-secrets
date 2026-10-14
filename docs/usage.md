@@ -14,9 +14,9 @@ mise run build
 ```
 
 The installed executable needs neither Go nor Python at runtime. Its private
-runner uses `/bin/cat` and `/usr/bin/head`, `/usr/bin/tail`, `/usr/bin/sed`.
-Controlled recursive searches also require ripgrep in a standard installation
-location; see the [search rules](rules.md#content-searches).
+reader parses and sanitizes configurations directly, without starting a utility.
+Searches use the existing native ripgrep executable, options, and configuration;
+see the [search rules](rules.md#content-searches).
 See [development](development.md) for the toolchain and dependencies.
 
 The installer copies the executable to
@@ -74,21 +74,23 @@ Agents can use these ordinary shell reads after activation:
 
 ```sh
 cat ~/.codex/config.toml
-head -n 40 ~/.codex/config.toml
-tail -n 20 ~/.codex/config.toml
-sed -n '1,120p' ~/.codex/config.toml
+cat ~/.codex/config.toml | head -n 40
+cat ~/.codex/config.toml | tail -n 20
+cat ~/.codex/config.toml | sed -n '1,120p'
 ```
 
 The hook rewrites supported reads automatically. The tool receives a redacted
 inspection view; line numbers refer to that view, not the original file.
 The [redaction rules](rules.md#redaction-rules) specify credential matches and
-reader options. Unmatched settings remain visible. Supported reads of Docker,
+the basic read bridge. Native downstream tools keep their full option support;
+direct raw reads of protected configs remain denied. Unmatched settings remain visible. Supported reads of Docker,
 Claude, and npm configuration also receive sanitized views; credential stores
 remain blocked.
 
-Metadata checks such as `ls -l .env` are allowed. Supported directory searches
-such as `rg --hidden -n pattern .` are rewritten to exclude protected files at
-execution time. Additional command forms and limits are listed in the rules.
+Metadata checks such as `ls -l .env` are allowed. Native directory searches such
+as `rg --hidden --max-count 2 pattern .` receive protected-path exclusions.
+Pipelines and compound searches keep their original shell behavior. Coverage
+and limits are listed in the rules.
 
 Use `agent-secrets help` for the CLI and `agent-secrets version` for the package
 and Go versions. The private reader is an internal hook target, not a public

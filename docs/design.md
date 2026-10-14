@@ -8,15 +8,27 @@ by default and removes only explicitly recognized credentials.
 
 | Module | Interface | Responsibility |
 | --- | --- | --- |
-| Request screening (`guard`) | Evaluate a hook request into allow, deny, or rewrite. | Normalize execution context, interpret operations, and apply access rules using arguments and metadata only. |
+| Request screening (`guard`) | Evaluate a hook request into allow, deny, or rewrite. | Normalize execution context, recognize disclosure operations, and apply access rules using arguments and metadata only. |
 | Credential policy (`policy`) | Classify names/paths and sanitize a parsed document or string. | Own credential conventions and default-visible redaction. No filesystem reads or command execution. |
-| Private runner (within `install`) | Execute a validated read/search plan. | Revalidate plans, resolve and open allowed files, sanitize configurations or exclude protected search candidates before output. |
+| Private runner (within `install`) | Return a validated, sanitized config view. | Revalidate plans, resolve and open supported files, and sanitize configurations before output. |
 | Installation (`install`) | Prepare, install, inspect. | Preserve unrelated settings, back up privately, replace atomically, and read back. |
 | Verification (`verify`) | Exercise the executable. | Synthetic requests and isolated homes through the actual process interface. |
 
 The CLI dispatches and encodes fixed user-facing responses. A separate module
 does not require a separate package: the private runner shares file-effect
 ownership with installation but has its own entrypoint and files.
+
+## Native command ownership
+
+The hook does not validate general native options or maintain lists of safe
+variable names and templates. Unknown options and harmless shell composition
+are not reasons for denial. Small recognizers identify specific disclosure
+operations and distinguish literal patterns from paths.
+
+The two deliberate rewriting exceptions are a basic config-read bridge and
+native ripgrep exclusions. Reader-option emulation and private search execution
+are absent. `guard/read.go` owns the config bridge; `guard/search.go` owns the
+search exception; `guard/operations.go` and `guard/find.go` own disclosure checks.
 
 ## Request decisions
 
@@ -34,9 +46,9 @@ Named checks cover:
 - Metadata and literal output: allow known forms while checking expansions.
 - Content access and transfer: deny protected reads, exports, copies, and moves.
 - Environment exposure: distinguish ordinary variables from credentials and dumps.
-- Inspection commands: accept narrow status selections, deny credential-bearing dumps.
-- Content searches: recognize supported options and use execution-time file filtering.
-- Config reads: turn supported reads into a constrained sanitized-read plan.
+- Inspection commands: deny recognized credential-bearing dumps and selections.
+- Content searches: screen explicit operands and add native ripgrep path exclusions.
+- Config reads: replace a basic cat read with a constrained sanitized-read plan.
 
 Denial wins over allowance or rewriting. Unsupported computed execution remains
 a documented limitation; the guard does not attempt to interpret arbitrary
@@ -62,14 +74,22 @@ environment values or invokes configured commands/helpers.
 
 ## Private execution
 
-Rewrites contain closed read/search plans. An encoded plan is untrusted input;
-the runner validates its kind, paths, options, and resource classification again.
-It does not accept an unrestricted executable or output destination.
+Config rewrites contain closed read plans. An encoded plan is untrusted input;
+the runner validates its kind, paths, and resource classification again.
+It accepts no executable, command options, or output destination. It returns
+sanitized bytes directly and never starts a subprocess. Native downstream tools
+process that view through ordinary shell pipelines.
 
-Only regular files may be read. Check paths and opened-file identity at execution
-time. Search filtering must control actual reads, not merely approve an
-unrestricted directory search after a preflight check. Buffer results so fixed
-errors cannot expose raw configuration or parser/utility diagnostics.
+Only regular config files may be read. Check paths and opened-file identity at
+execution time. Buffer results so fixed errors cannot expose raw configuration
+or parser diagnostics.
+
+Searches keep their native implementation. The hook inserts protected-path
+exclusions into parsed ripgrep calls and preserves the original shell source.
+Ripgrep validates its own options and owns traversal, output and exit behavior.
+There is no private search engine or option allowlist. This deliberately trades
+coverage of unusual aliases/helpers/computed execution for native compatibility;
+explicit credential operands are still denied before rewriting.
 
 ## Validation
 

@@ -60,7 +60,7 @@ func TestCommandArgumentRoles(t *testing.T) {
 		{`echo "rg '$(printenv)' README.md"`, 2},
 		{`echo "rg '$(env)' README.md"`, 2},
 		{`echo "rg '$(cat .env)' README.md"`, 2},
-		{`rg --hidden '.env' .`, 2},
+		{`rg --hidden '.env' .`, 0},
 		{`rg --hidden '.*' README.md`, 0},
 		{`rg .* README.md`, 2},
 		{`cat '.env'`, 2},
@@ -143,8 +143,19 @@ func TestCommandArgumentRoles(t *testing.T) {
 				}
 				return
 			}
-			if got := guard.Hook(bytes.NewReader(request), &stdout, &stderr, home, cwd, "/tmp/agent-secrets"); got != tt.want || stdout.Len() != 0 {
-				t.Fatalf("Hook got %d, want %d with empty stdout", got, tt.want)
+			if got := guard.Hook(bytes.NewReader(request), &stdout, &stderr, home, cwd, "/tmp/agent-secrets"); got != tt.want || got == 2 && stdout.Len() != 0 {
+				t.Fatalf("Hook got %d, want %d", got, tt.want)
+			}
+			if stdout.Len() > 0 {
+				var result struct {
+					Output struct {
+						Decision string         `json:"permissionDecision"`
+						Input    map[string]any `json:"updatedInput"`
+					} `json:"hookSpecificOutput"`
+				}
+				if json.Unmarshal(stdout.Bytes(), &result) != nil || result.Output.Decision != "allow" || result.Output.Input["cmd"] == tt.command {
+					t.Fatal("invalid native search rewrite")
+				}
 			}
 		})
 	}

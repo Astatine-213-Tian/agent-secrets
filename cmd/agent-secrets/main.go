@@ -17,7 +17,7 @@ import (
 	"github.com/Astatine-213-Tian/agent-secrets/internal/verify"
 )
 
-const version = "1.2.0"
+const version = "1.3.0"
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 func run(args []string, in io.Reader, out, errOut io.Writer) int {
@@ -61,9 +61,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 			fmt.Fprintln(errOut, install.ErrPlan)
 			return 1
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		b, status, e := install.RunPlan(ctx, home, args[1])
+		b, e := install.RunPlan(home, args[1])
 		if e != nil {
 			fmt.Fprintln(errOut, install.ErrPlan)
 			return 1
@@ -72,7 +70,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 			fmt.Fprintln(errOut, install.ErrPlan)
 			return 1
 		}
-		return status
+		return 0
 	case "install":
 		f := flag.NewFlagSet(args[0], flag.ContinueOnError)
 		f.SetOutput(io.Discard)
