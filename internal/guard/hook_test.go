@@ -57,7 +57,7 @@ func TestHookRewritesCommonReads(t *testing.T) {
 				}
 				updated := result.Output.Input
 				rewrite, _ := updated[key].(string)
-				if !strings.Contains(rewrite, "'__read-codex-config'") || strings.Contains(rewrite, "config.toml") || !strings.Contains(rewrite, `'"'"'`) {
+				if !strings.Contains(rewrite, "'__run'") || strings.Contains(rewrite, "config.toml") || !strings.Contains(rewrite, `'"'"'`) {
 					t.Fatal("unsafe target or quoting")
 				}
 				if updated["counter"] != json.Number("9007199254740993") || updated["timeout"] != json.Number("5000") || len(updated) != len(args) {

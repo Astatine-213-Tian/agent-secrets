@@ -27,7 +27,9 @@ func ConfigReadFilter(reader string, args []string) (string, bool) {
 		}
 		if len(args) == 1 && strings.HasPrefix(args[0], "-") {
 			n := args[0][1:]
-			n = strings.TrimPrefix(strings.TrimPrefix(n, "n"), "c")
+			if strings.HasPrefix(n, "n") || strings.HasPrefix(n, "c") {
+				n = n[1:]
+			}
 			valid = readCount.MatchString(n)
 		}
 		return "/usr/bin/" + reader, valid

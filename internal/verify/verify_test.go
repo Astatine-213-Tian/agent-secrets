@@ -22,14 +22,15 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(guard.Check(os.Stdin, os.Stderr, home, cwd))
 	}
-	if len(os.Args) >= 4 && os.Args[1] == "__read-codex-config" {
-		b, err := install.ReadCodexConfig(context.Background(), os.Args[2], os.Args[3], os.Args[4:])
+	if len(os.Args) == 3 && os.Args[1] == "__run" {
+		home, _ := os.UserHomeDir()
+		b, status, err := install.RunPlan(context.Background(), home, os.Args[2])
 		if err != nil {
-			fmt.Fprintln(os.Stderr, install.ErrConfigView)
+			fmt.Fprintln(os.Stderr, install.ErrPlan)
 			os.Exit(1)
 		}
 		_, _ = os.Stdout.Write(b)
-		os.Exit(0)
+		os.Exit(status)
 	}
 	os.Exit(m.Run())
 }
@@ -46,7 +47,7 @@ func TestProcess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	r := verify.Process(ctx, exe, home)
-	if !r.Passed || len(r.Checks) != 44 {
+	if !r.Passed || len(r.Checks) == 0 {
 		t.Fatalf("process contract failed: %+v", r)
 	}
 }

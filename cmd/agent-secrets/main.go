@@ -17,7 +17,7 @@ import (
 	"github.com/Astatine-213-Tian/agent-secrets/internal/verify"
 )
 
-const version = "1.1.0"
+const version = "1.2.0"
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 func run(args []string, in io.Reader, out, errOut io.Writer) int {
@@ -56,24 +56,23 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 	case "help", "--help", "-h":
 		usage(out)
 		return 0
-	case "__read-codex-config":
-		// Private hook target, never a command agents need to discover or use.
-		if len(args) < 3 {
-			fmt.Fprintln(errOut, install.ErrConfigView)
+	case "__run":
+		if len(args) != 2 {
+			fmt.Fprintln(errOut, install.ErrPlan)
 			return 1
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		b, e := install.ReadCodexConfig(ctx, args[1], args[2], args[3:])
+		b, status, e := install.RunPlan(ctx, home, args[1])
 		if e != nil {
-			fmt.Fprintln(errOut, install.ErrConfigView)
+			fmt.Fprintln(errOut, install.ErrPlan)
 			return 1
 		}
-		if _, e := out.Write(b); e != nil {
-			fmt.Fprintln(errOut, install.ErrConfigView)
+		if _, e = out.Write(b); e != nil {
+			fmt.Fprintln(errOut, install.ErrPlan)
 			return 1
 		}
-		return 0
+		return status
 	case "install":
 		f := flag.NewFlagSet(args[0], flag.ContinueOnError)
 		f.SetOutput(io.Discard)

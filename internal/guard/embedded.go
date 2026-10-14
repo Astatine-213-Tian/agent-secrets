@@ -1,20 +1,74 @@
 package guard
 
 import (
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/Astatine-213-Tian/agent-secrets/internal/policy"
 )
 
 var quotedCode = regexp.MustCompile(`(?s)"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'` + "|`(?:\\\\.|[^`\\\\])*`")
+
+var envLookup = regexp.MustCompile(`(?:os\.(?:getenv|Getenv|LookupEnv)|getenv)\s*\(\s*["']([A-Za-z_][A-Za-z_0-9]*)["']|(?:os\.environ|process\.env)\s*\[\s*["']([A-Za-z_][A-Za-z_0-9]*)["']\s*\]|process\.env\.([A-Za-z_][A-Za-z_0-9]*)|os\.environ\.get\s*\(\s*["']([A-Za-z_][A-Za-z_0-9]*)["']`)
+var anyEnvironment = regexp.MustCompile(`\bos\.(?:environ|getenv|Environ|Getenv|LookupEnv)\b|\bprocess\.env\b|\b(?:getenv|environ)\s*\(`)
+var executableLiteral = regexp.MustCompile(`(?s)(?:\b(?:cmd|command|script|code)\s*:\s*|(?:os\.system|execSync|exec|eval|subprocess\.(?:run|call|check_output|Popen))\s*\(\s*\[?\s*)$`)
+var fileLiteral = regexp.MustCompile(`(?s)(?:\b(?:open|Path|readFile|readFileSync|ReadFile|writeFile|writeFileSync)\s*\(\s*|\b(?:path|file_path|filename)\s*:\s*)$`)
+
+// Source heuristics inspect executed scripts, not file contents or edit text.
+// Only explicit environment access and recognizable file/execution APIs are
+// interpreted. Arbitrary program data does not become a path or command.
+func (g checker) scriptBlocked(code string, depth int) bool {
+	if depth > 32 {
+		return true
+	}
+	view := []byte(code)
+	quotes := quotedCode.FindAllStringIndex(code, -1)
+	mask := func(a, b int) {
+		for i := a; i < b; i++ {
+			view[i] = ' '
+		}
+	}
+	for _, span := range envLookup.FindAllStringIndex(code, -1) {
+		inside := false
+		for _, q := range quotes {
+			if span[0] >= q[0] && span[0] < q[1] && code[q[0]] != '`' {
+				inside = true
+				break
+			}
+		}
+		if inside {
+			continue
+		}
+		s := code[span[0]:span[1]]
+		m := envLookup.FindStringSubmatch(s)
+		name := ""
+		for _, v := range m[1:] {
+			if v != "" {
+				name = v
+			}
+		}
+		if !policy.PublicEnvironment(name) {
+			return true
+		}
+		mask(span[0], span[1])
+	}
+	for _, q := range quotes {
+		if code[q[0]] != '`' || !strings.Contains(code[q[0]:q[1]], "${") {
+			mask(q[0], q[1])
+		}
+	}
+	if anyEnvironment.Match(view) {
+		return true
+	}
+	return g.embeddedBlocked(code, depth)
+}
 
 // Preserve the literal-command coverage of embedded Python/JavaScript and
 // code-mode requests. This is a bounded heuristic, not a language interpreter:
 // only recognizable commands or nested quoted source are screened as code.
 // A bare regex such as '.*' never becomes a shell glob here.
-func (g checker) screenEmbeddedCommands(code string, depth int) (string, bool) {
-	view := []byte(code)
+func (g checker) embeddedBlocked(code string, depth int) bool {
 	for _, span := range quotedCode.FindAllStringIndex(code, -1) {
 		literal := code[span[0]:span[1]]
 		value := literal[1 : len(literal)-1]
@@ -26,36 +80,16 @@ func (g checker) screenEmbeddedCommands(code string, depth int) (string, bool) {
 			value = strings.ReplaceAll(value, `\'`, `'`)
 			value = strings.ReplaceAll(value, `\\`, `\`)
 		}
-		if !commandLiteral(value) && !strings.ContainsAny(value, "\"'") {
+		prefix := code[:span[0]]
+		if fileLiteral.MatchString(prefix) && g.protected(value) {
+			return true
+		}
+		if !executableLiteral.MatchString(prefix) {
 			continue
 		}
 		if g.inspectCode(value, depth+1) {
-			return code, true
+			return true
 		}
-		if literal[0] == '`' && strings.Contains(value, "${") {
-			// JavaScript interpolation is source code, not shell quoting.
-			// Keep it visible to the remaining lexical credential checks.
-			continue
-		}
-		// Only remove a literal after all of its code/path checks succeeded;
-		// reinterpreting it again would lose the regex roles just established.
-		for i := span[0]; i < span[1]; i++ {
-			if view[i] != '\n' {
-				view[i] = ' '
-			}
-		}
-	}
-	return string(view), false
-}
-
-func commandLiteral(value string) bool {
-	words := strings.Fields(value)
-	if len(words) < 2 {
-		return false
-	}
-	switch filepath.Base(words[0]) {
-	case "cat", "head", "tail", "less", "more", "sed", "awk", "rg", "grep", "egrep", "fgrep", "ps", "env", "printenv", "command", "exec", "sudo", "sh", "bash", "zsh", "dash", "ksh", "python", "python3", "node":
-		return true
 	}
 	return false
 }

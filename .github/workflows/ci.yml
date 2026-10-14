@@ -13,10 +13,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v3
+      - name: Install search runtime
+        run: |
+          if ! command -v rg >/dev/null; then
+            if [ "$RUNNER_OS" = "macOS" ]; then brew install ripgrep; else sudo apt-get update && sudo apt-get install -y ripgrep; fi
+          fi
       - run: mise run check
       - run: mise run build
       - run: ./bin/agent-secrets verify
       - run: mise exec -- go test ./internal/guard -run '^$' -fuzz FuzzCheck -fuzztime 10s
       - run: mise exec -- go test ./internal/guard -run '^$' -fuzz FuzzHook -fuzztime 10s
       - run: mise exec -- go test ./internal/install -run '^$' -fuzz FuzzPrepare -fuzztime 10s
-      - run: mise exec -- go test ./internal/install -run '^$' -fuzz FuzzRedactCodexConfig -fuzztime 10s
+      - run: mise exec -- go test ./internal/policy -run '^$' -fuzz FuzzSanitize -fuzztime 10s
+      - run: mise exec -- go test ./internal/policy -run '^$' -fuzz FuzzPlan -fuzztime 10s

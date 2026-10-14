@@ -3,16 +3,15 @@
 package guard
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"net/url"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
 
+	"github.com/Astatine-213-Tian/agent-secrets/internal/install"
 	"github.com/Astatine-213-Tian/agent-secrets/internal/policy"
 	"mvdan.cc/sh/v3/pattern"
 )
@@ -21,55 +20,41 @@ const Reason = "Blocked by global credential protection: secret files and enviro
 const maxInput = 4 << 20
 
 var envRef = regexp.MustCompile(`(?:^|[^\w.\-])(\.env(?:\.[\w*?\[\]-]+)*)(?:$|[^\w.\-])`)
-var envAccess = regexp.MustCompile(`os\.(?:environ|getenv|Environ|Getenv|LookupEnv)|process\.env|\b(?:getenv|environ)\s*\(`)
-var shellVar = regexp.MustCompile(`\$\{?([A-Za-z_][A-Za-z_0-9]*)`)
-var envDump = regexp.MustCompile(`(?:^|[;|&\n(])\s*(?:(?:command|exec|sudo)\s+)?(?:/\S*/)?(?:printenv\b|env\s*(?:$|[;|&\n])|set\s*(?:$|-[a-zA-Z]*x)|(?:export|declare|typeset)\s+-p)`)
-var credentialCommand = regexp.MustCompile(`\b(?:security\s+find-(?:generic|internet)-password|gh\s+auth\s+token|docker\s+(?:container\s+)?inspect|(?:docker\s+)?compose\s+config)\b`)
 var patchPath = regexp.MustCompile(`(?m)^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)\r?$`)
 
 // Check consumes one hook request. Malformed, oversized, or uninspectable input
 // is denied. Output is a fixed message; request content is never reflected.
 func Check(input io.Reader, stderr io.Writer, home, cwd string) (exitCode int) {
-	deny := true
-	defer func() {
-		if recover() != nil {
-			_, _ = io.WriteString(stderr, Reason+"\n")
-			exitCode = 2
-		}
-	}()
 	data, err := io.ReadAll(io.LimitReader(input, maxInput+1))
-	if err == nil && len(data) <= maxInput {
-		var payload map[string]any
-		if json.Unmarshal(data, &payload) == nil && payload != nil {
-			tool, valid := payload["tool_name"].(string)
-			args, found := payload["tool_input"]
-			if !found {
-				args, found = payload["arguments"]
-			}
-			if s, ok := payload["cwd"].(string); ok && filepath.IsAbs(s) {
-				cwd = s
-			}
-			if valid && tool != "" && found && args != nil {
-				switch args.(type) {
-				case string, map[string]any:
-					g := checker{home: home, cwd: cwd, tool: strings.ToLower(tool)}
-					deny = g.inspect(args, "")
-				}
-			}
-		}
+	if err == nil && Evaluate(data, home, cwd, "").Kind == Allow {
+		return 0
 	}
-	if deny {
-		_, _ = io.WriteString(stderr, Reason+"\n")
-		return 2
-	}
-	return 0
+	_, _ = io.WriteString(stderr, Reason+"\n")
+	return 2
 }
 
-type checker struct{ home, cwd, tool string }
+type checker struct {
+	home, cwd, tool string
+	stores          *policy.Locations
+}
+
+func (g checker) locations() policy.Locations {
+	if g.stores != nil {
+		return *g.stores
+	}
+	return install.Locations(g.home, g.cwd)
+}
 
 func (g checker) inspect(v any, key string) bool {
 	switch value := v.(type) {
 	case map[string]any:
+		if p, ok := value["workdir"].(string); ok {
+			if filepath.IsAbs(p) {
+				g.cwd = p
+			} else {
+				g.cwd = filepath.Join(g.cwd, p)
+			}
+		}
 		for k, item := range value {
 			if g.inspect(item, strings.ToLower(k)) {
 				return true
@@ -83,7 +68,7 @@ func (g checker) inspect(v any, key string) bool {
 		}
 	case string:
 		switch key {
-		case "description", "title", "justification":
+		case "description", "title", "justification", "workdir":
 			return false
 		}
 		if strings.Contains(g.tool, "apply_patch") {
@@ -131,6 +116,19 @@ func (g checker) inspectPath(value string, codeWord bool) bool {
 		}
 	}
 	value = strings.TrimPrefix(value, "file://")
+	l := g.locations()
+	for name, path := range map[string]string{"CODEX_HOME": l.Codex, "DOCKER_CONFIG": l.Docker, "NPM_CONFIG_USERCONFIG": l.NPM, "AWS_SHARED_CREDENTIALS_FILE": l.AWS, "PWD": g.cwd} {
+		if path == "" {
+			continue
+		}
+		for _, prefix := range []string{"$" + name, "${" + name + "}"} {
+			if value == prefix {
+				value = path
+			} else if strings.HasPrefix(value, prefix+"/") {
+				value = filepath.Join(path, strings.TrimPrefix(value, prefix+"/"))
+			}
+		}
+	}
 	for _, prefix := range []string{"$HOME/", "${HOME}/"} {
 		if strings.HasPrefix(value, prefix) {
 			value = filepath.Join(g.home, strings.TrimPrefix(value, prefix))
@@ -145,7 +143,7 @@ func (g checker) inspectPath(value string, codeWord bool) bool {
 		value = filepath.Join(g.cwd, value)
 	}
 	value = filepath.Clean(value)
-	resolved, err := resolveMissing(value, 0)
+	resolved, err := install.ResolvePath(value)
 	if err != nil {
 		// Code words also include prose literals, not just filenames. A word
 		// the filesystem cannot represent is not a readable path. Keep the
@@ -156,94 +154,42 @@ func (g checker) inspectPath(value string, codeWord bool) bool {
 		}
 		resolved = value
 	}
-	for _, candidate := range []string{value, resolved} {
-		name := filepath.Base(candidate)
-		if publicEnv(name) {
-			continue
-		}
-		if name == ".env" || strings.HasPrefix(name, ".env.") {
+	physical, err := install.ResolveLocations(l)
+	if err != nil {
+		return true
+	}
+	if physical.Protected(resolved) {
+		return true
+	}
+	if g.stores != nil {
+		base := install.Locations(g.home, g.cwd)
+		physical, e := install.ResolveLocations(base)
+		if e != nil || base.Protected(value) || physical.Protected(resolved) {
 			return true
 		}
-		for _, pattern := range policy.DeniedPaths(g.home) {
-			if glob(pattern, candidate) || strings.HasPrefix(candidate, pattern+"/") {
-				return true
-			}
+	}
+	for _, candidate := range []string{value, resolved} {
+		if g.locations().Protected(candidate) {
+			return true
 		}
+		name := filepath.Base(candidate)
 		if !codeWord && strings.ContainsAny(name, "*?[") {
 			if expression, err := pattern.Regexp(name, pattern.ExtendedOperators); err == nil {
 				matcher := regexp.MustCompile("^(?:" + expression + ")$")
-				for _, secret := range []string{".env", ".env.local", ".env.production"} {
-					if matcher.MatchString(secret) {
+				for _, rule := range g.locations().Paths() {
+					sample := filepath.Base(rule)
+					if strings.ContainsAny(sample, "*?") {
+						continue
+					}
+					if matcher.MatchString(sample) {
 						return true
 					}
 				}
 			}
 		}
 	}
+
 	return false
-}
-
-// Resolve existing parents and dangling symlinks using metadata only. Unlike
-// EvalSymlinks this also handles a link whose protected target doesn't exist.
-func resolveMissing(p string, depth int) (string, error) {
-	if depth > 64 {
-		return "", os.ErrInvalid
-	}
-	if p == filepath.Dir(p) {
-		return p, nil
-	}
-	parent, err := resolveMissing(filepath.Dir(p), depth+1)
-	if err != nil {
-		return "", err
-	}
-	p = filepath.Join(parent, filepath.Base(p))
-	info, err := os.Lstat(p)
-	if os.IsNotExist(err) {
-		return p, nil
-	}
-	if err != nil {
-		return "", err
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		return p, nil
-	}
-	target, err := os.Readlink(p)
-	if err != nil {
-		return "", err
-	}
-	if !filepath.IsAbs(target) {
-		target = filepath.Join(parent, target)
-	}
-	return resolveMissing(filepath.Clean(target), depth+1)
-}
-
-// Path patterns use **. Translate it here with matching across directories,
-// including zero directories, rather than filepath.Match's single segments.
-func glob(pattern, value string) bool {
-	var b strings.Builder
-	b.WriteByte('^')
-	for i := 0; i < len(pattern); i++ {
-		switch pattern[i] {
-		case '*':
-			if i+1 < len(pattern) && pattern[i+1] == '*' {
-				i++
-				if i+1 < len(pattern) && pattern[i+1] == '/' {
-					i++
-					b.WriteString(`(?:.*/)?`)
-				} else {
-					b.WriteString(`.*`)
-				}
-			} else {
-				b.WriteString(`[^/]*`)
-			}
-		case '?':
-			b.WriteString(`[^/]`)
-		default:
-			b.WriteString(regexp.QuoteMeta(string(pattern[i])))
-		}
-	}
-	b.WriteByte('$')
-	return regexp.MustCompile(b.String()).MatchString(value)
 }
 
 func (g checker) codeBlocked(code string) bool {
@@ -254,57 +200,18 @@ func (g checker) inspectCode(code string, depth int) bool {
 	if depth > 32 {
 		return true
 	}
+	trim := strings.TrimSpace(code)
+	for _, prefix := range []string{"await ", "const ", "let ", "import "} {
+		if strings.HasPrefix(trim, prefix) {
+			return g.scriptBlocked(code, depth)
+		}
+	}
 	code, blocked := g.screenShell(code, depth)
 	if blocked {
 		return true
 	}
-	if envAccess.MatchString(code) || envDump.MatchString(code) || credentialCommand.MatchString(code) {
-		return true
+	if code == "" {
+		return false
 	}
-	for _, m := range shellVar.FindAllStringSubmatch(code, -1) {
-		if policy.SecretName(m[1]) {
-			return true
-		}
-	}
-	// Check expansion-bearing source before interpreting embedded strings.
-	// Inner single quotes cannot protect an outer double-quoted expansion.
-	code, blocked = g.screenEmbeddedCommands(code, depth)
-	if blocked {
-		return true
-	}
-	for _, m := range envRef.FindAllStringSubmatch(code, -1) {
-		if !publicEnv(m[1]) {
-			return true
-		}
-	}
-	// Embedded code still receives literal credential-path checks. Only parsed
-	// shell operands and explicit path arguments receive filesystem-glob checks;
-	// arbitrary source text and quoted regexes are not shell filename patterns.
-	words := strings.FieldsFunc(code, func(r rune) bool { return strings.ContainsRune(" \t\r\n\"'`;|&()<>=,", r) })
-	scan, broad, listing, explicit := false, false, false, false
-	for _, word := range words {
-		if g.inspectPath(word, true) {
-			return true
-		}
-		switch filepath.Base(word) {
-		case "rg", "grep":
-			scan = true
-		}
-		switch word {
-		case "--hidden", "--no-ignore", "-uu", "-uuu", "-R", "-r":
-			broad = true
-		case "--files", "-l", "--files-with-matches":
-			listing = true
-		}
-		if !strings.HasPrefix(word, "-") {
-			p := word
-			if !filepath.IsAbs(p) {
-				p = filepath.Join(g.cwd, p)
-			}
-			if st, err := os.Stat(p); err == nil && st.Mode().IsRegular() {
-				explicit = true
-			}
-		}
-	}
-	return scan && broad && !listing && !explicit
+	return g.scriptBlocked(code, depth)
 }

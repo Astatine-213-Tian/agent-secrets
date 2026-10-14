@@ -9,6 +9,7 @@ import (
 
 	"github.com/Astatine-213-Tian/agent-secrets/internal/guard"
 	"github.com/Astatine-213-Tian/agent-secrets/internal/install"
+	"github.com/Astatine-213-Tian/agent-secrets/internal/policy"
 )
 
 func TestCLI(t *testing.T) {
@@ -28,7 +29,7 @@ func TestCLI(t *testing.T) {
 		{[]string{"guard", "unexpected"}, "", 2},
 		{[]string{"hook", "unexpected"}, "", 2},
 		{[]string{"hook"}, "DO_NOT_ECHO", 2},
-		{[]string{"__read-codex-config"}, "", 1},
+		{[]string{"__run"}, "", 1},
 		{[]string{"config-view"}, "", 1},
 	} {
 		var out, stderr bytes.Buffer
@@ -58,14 +59,15 @@ func TestPrivateReaderCLI(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(input), 0600); err != nil {
 			t.Fatal(err)
 		}
-		for _, args := range [][]string{{"__read-codex-config", home, "cat"}, {"__read-codex-config", home, "head", "-n", "100"}} {
+		for _, reader := range []string{"cat", "head"} {
+			args := []string{"__run", (policy.Plan{Kind: "read", Cwd: home, Path: filepath.Join(dir, "config.toml"), Reader: reader}).Encode()}
 			var out, stderr bytes.Buffer
 			code := run(args, strings.NewReader(""), &out, &stderr)
 			if strings.Contains(out.String()+stderr.String(), "DO_NOT_ECHO") {
 				t.Fatal("configuration leaked")
 			}
 			if strings.Contains(input, "broken") {
-				if code != 1 || out.Len() != 0 || stderr.String() != install.ErrConfigView.Error()+"\n" {
+				if code != 1 || out.Len() != 0 || stderr.String() != install.ErrPlan.Error()+"\n" {
 					t.Fatal("invalid config protocol")
 				}
 			} else if code != 0 || stderr.Len() != 0 || !strings.Contains(out.String(), "prevent_idle_sleep = true") || !strings.Contains(out.String(), "MY_TOKEN") || !strings.Contains(out.String(), "[REDACTED]") {

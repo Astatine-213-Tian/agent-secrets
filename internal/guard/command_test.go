@@ -137,6 +137,12 @@ func TestCommandArgumentRoles(t *testing.T) {
 			check(t, "exec_command", args, home, cwd, tt.want)
 			request, _ := json.Marshal(map[string]any{"tool_name": "exec_command", "tool_input": args, "cwd": cwd})
 			var stdout, stderr bytes.Buffer
+			if tt.command == `rg --hidden '.env' .` {
+				if guard.Hook(bytes.NewReader(request), &stdout, &stderr, home, cwd, "/tmp/agent-secrets") != 0 || stdout.Len() == 0 {
+					t.Fatal("recursive search not rewritten")
+				}
+				return
+			}
 			if got := guard.Hook(bytes.NewReader(request), &stdout, &stderr, home, cwd, "/tmp/agent-secrets"); got != tt.want || stdout.Len() != 0 {
 				t.Fatalf("Hook got %d, want %d with empty stdout", got, tt.want)
 			}

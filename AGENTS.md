@@ -8,8 +8,10 @@ Keep permission profiles, native sandbox policy, and administrator-managed
 restrictions outside the package. Keep one-time cleanup scripts and review
 reports out of version control.
 
-Read `README.md` when changing installation, CLI behavior, or supported coverage;
-keep its user-facing instructions consistent with the resulting behavior.
+Read `docs/rules.md` when changing screening, redaction, or supported coverage,
+and `docs/usage.md` when changing installation or CLI behavior. Keep those docs
+consistent with the resulting behavior; keep `README.md` limited to purpose
+and documentation links.
 
 ## Implementation
 
@@ -32,9 +34,9 @@ keep its user-facing instructions consistent with the resulting behavior.
   contents or echo requests, configuration values, or internal errors.
 - Preserve `guard`'s silent exit `0` for allowed requests and fixed exit `2`
   denial for denied, malformed, or oversized requests. The installed `hook`
-  also emits `updatedInput` for allowlisted config reads, without reading
-  contents itself. Sanitize locally before the rewritten tool produces output;
-  validate reader arguments independently in the hook and private runner.
+  also emits `updatedInput` for supported config reads and directory searches,
+  without reading contents itself. Sanitize or filter locally before output;
+  validate every plan independently in the hook and private runner.
 - Use synthetic data and isolated homes in tests. Real settings and credentials
   are not test fixtures. Respect any active filesystem denials; use a terminal
   handoff for operations that the agent's permissions cannot perform.
@@ -43,7 +45,7 @@ keep its user-facing instructions consistent with the resulting behavior.
 
 - Run `mise run check`, `mise run build`, and `./bin/agent-secrets verify` after
   code changes. For decoding or matching changes, also run the relevant fuzz
-  command documented in `README.md`.
+  command documented in `docs/development.md`.
 - Add regression coverage for changed behavior, including allowed requests
   alongside denials and preservation cases alongside installation changes.
 - Report sandbox-caused failures separately from product failures. A test suite

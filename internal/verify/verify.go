@@ -14,6 +14,7 @@ import (
 
 	"github.com/Astatine-213-Tian/agent-secrets/internal/guard"
 	"github.com/Astatine-213-Tian/agent-secrets/internal/install"
+	"github.com/Astatine-213-Tian/agent-secrets/internal/policy"
 )
 
 type Check struct {
@@ -35,6 +36,12 @@ func Process(ctx context.Context, binary, home string) Report {
 		want       int
 	}{
 		{"ordinary_read", "Read", map[string]any{"path": "README.md"}, 0},
+		{"metadata_listing", "Bash", map[string]any{"command": "ls -l .env"}, 0},
+		{"metadata_nested_read", "Bash", map[string]any{"command": "ls $(cat .env)"}, 2},
+		{"public_ssh_key", "Read", map[string]any{"path": "~/.ssh/id_ed25519.pub"}, 0},
+		{"ordinary_environment", "Bash", map[string]any{"command": "printenv MAX_TOKENS TOKENIZERS_PARALLELISM"}, 0},
+		{"docker_status", "Bash", map[string]any{"command": "docker inspect -f '{{.State.Status}}' app"}, 0},
+		{"configured_store", "Bash", map[string]any{"command": "CODEX_HOME=/tmp/synthetic-codex cat /tmp/synthetic-codex/auth.json"}, 2},
 		{"public_example", "Read", map[string]any{"path": ".env.example"}, 0},
 		{"secret_read", "Read", map[string]any{"path": ".env"}, 2},
 		{"nested_mcp", "mcp__filesystem__read", map[string]any{"nested": []any{map[string]any{"path": "file:///tmp/%2Eenv.local"}}}, 2},
@@ -77,10 +84,28 @@ func Process(ctx context.Context, binary, home string) Report {
 		r.Checks = append(r.Checks, Check{"malformed_request", probe(ctx, binary, []byte(b), 2)})
 	}
 	r.Checks = append(r.Checks, configViewProbes(ctx, binary)...)
+	r.Checks = append(r.Checks, searchProbes(ctx, binary)...)
 	for _, c := range r.Checks {
 		r.Passed = r.Passed && c.Passed
 	}
 	return r
+}
+
+func searchProbes(ctx context.Context, binary string) []Check {
+	checks := []Check{{Name: "filtered_recursive_search"}, {Name: "mixed_search_operands"}, {Name: "search_fixture_cleanup"}}
+	home, e := os.MkdirTemp("", "agent-secrets-search-verify-")
+	if e != nil {
+		return checks
+	}
+	defer func() { checks[len(checks)-1].Passed = os.RemoveAll(home) == nil }()
+	for name, value := range map[string]string{"README.md": "needle public\n", ".env": "needle DO_NOT_ECHO\n"} {
+		if os.WriteFile(filepath.Join(home, name), []byte(value), 0600) != nil {
+			return checks
+		}
+	}
+	checks[0].Passed = automaticRead(ctx, binary, home, "rg --hidden needle .", "README.md:needle public\n")
+	checks[1].Passed = automaticRead(ctx, binary, home, "rg --hidden needle README.md .", "README.md:needle public\n")
+	return checks
 }
 
 func configViewProbes(ctx context.Context, binary string) []Check {
@@ -96,13 +121,14 @@ func configViewProbes(ctx context.Context, binary string) []Check {
 	}
 	fixtures := []struct{ input, stdout, stderr string }{
 		{"prevent_idle_sleep = true\napi_key = 'DO_NOT_ECHO'\n", "api_key = \"[REDACTED]\"\nprevent_idle_sleep = true\n", ""},
-		{"prevent_idle_sleep = true\nbroken = 'DO_NOT_ECHO", "", install.ErrConfigView.Error() + "\n"},
+		{"prevent_idle_sleep = true\nbroken = 'DO_NOT_ECHO", "", install.ErrPlan.Error() + "\n"},
 	}
 	for i, fixture := range fixtures {
 		if os.WriteFile(filepath.Join(dir, "config.toml"), []byte(fixture.input), 0600) != nil {
 			continue
 		}
-		c := exec.CommandContext(ctx, binary, "__read-codex-config", home, "cat")
+		c := exec.CommandContext(ctx, binary, "__run", (policy.Plan{Kind: "read", Cwd: home, Path: filepath.Join(dir, "config.toml"), Reader: "cat"}).Encode())
+		c.Env = append(os.Environ(), "HOME="+home)
 		var stdout, stderr bytes.Buffer
 		c.Stdout, c.Stderr = &stdout, &stderr
 		err := c.Run()
@@ -151,7 +177,7 @@ func automaticRead(ctx context.Context, binary, home, command, want string) bool
 	if json.Unmarshal(stdout.Bytes(), &result) != nil || result.Output.Event != "PreToolUse" || result.Output.Decision != "allow" {
 		return false
 	}
-	if !strings.Contains(result.Output.Input.Command, "'__read-codex-config'") {
+	if !strings.Contains(result.Output.Input.Command, "'__run'") {
 		return false
 	}
 	read := exec.CommandContext(ctx, "/bin/sh", "-c", result.Output.Input.Command)

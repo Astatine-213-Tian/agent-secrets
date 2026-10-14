@@ -1,0 +1,98 @@
+# Installation and usage
+
+Read the [protection rules](rules.md) for exact redaction, blocking, and coverage.
+
+## Install
+
+macOS and Linux are supported. Build with [mise](https://mise.jdx.dev/):
+
+```sh
+mise install
+mise run check
+mise run build
+./bin/agent-secrets install
+```
+
+The installed executable needs neither Go nor Python at runtime. Its private
+runner uses `/bin/cat` and `/usr/bin/head`, `/usr/bin/tail`, `/usr/bin/sed`.
+Controlled recursive searches also require ripgrep in a standard installation
+location; see the [search rules](rules.md#content-searches).
+See [development](development.md) for the toolchain and dependencies.
+
+The installer copies the executable to
+`~/.local/share/agent-secrets/agent-secrets` and merges a `PreToolUse` command
+hook with matcher `*` and a five-second timeout into:
+
+- `~/.codex/hooks.json`
+- `~/.claude/settings.json`
+
+Unrelated settings, hook handlers, and JSON number precision are preserved.
+Both settings documents are parsed before replacement. Existing settings are
+backed up privately under `~/.local/share/agent-secrets/backups/`; replacements
+are atomic per file and verified by readback. A concurrent settings change
+detected before replacement causes installation to fail. Installation is not
+a transaction across the binary and both settings files; after a failure,
+check status before relying on the result.
+
+Repeated installation keeps the registrations idempotent, while making fresh
+backups. Registrations using the same binary's old `guard` command are replaced
+with `hook` so automatic redaction runs. `install --home PATH` targets another
+home directory; run the clients with the corresponding home. Run installation
+as your normal user, without `sudo`. If an agent sandbox denies access to the
+settings, perform the installation in your own terminal. The installer does
+not change permission modes, native sandbox policy, or administrator restrictions.
+
+## Activate and verify
+
+Restart both clients. In Codex, open **`/hooks`**, review the command and trust
+it. Changed hook definitions require renewed trust, and hooks must be enabled
+in the client. The installer does not grant trust or install a trust bypass.
+
+From the checkout, compare the build with the installation:
+
+```sh
+./bin/agent-secrets status
+```
+
+Then verify the installed executable:
+
+```sh
+~/.local/share/agent-secrets/agent-secrets verify
+```
+
+`status` compares the invoking binary with the installed binary and reads both
+registrations. Running the installed binary's own `status` checks it against
+itself, so use the checkout build to check whether a new build was installed.
+`verify` runs synthetic hook requests and sanitized-reader fixtures, checks
+exact output and exit codes, and requires fixture cleanup to succeed. It needs
+no agent login or model usage. Neither command proves that a running client
+has loaded or trusted the hook.
+
+## Use
+
+Agents can use these ordinary shell reads after activation:
+
+```sh
+cat ~/.codex/config.toml
+head -n 40 ~/.codex/config.toml
+tail -n 20 ~/.codex/config.toml
+sed -n '1,120p' ~/.codex/config.toml
+```
+
+The hook rewrites supported reads automatically. The tool receives a redacted
+inspection view; line numbers refer to that view, not the original file.
+The [redaction rules](rules.md#redaction-rules) specify credential matches and
+reader options. Unmatched settings remain visible. Supported reads of Docker,
+Claude, and npm configuration also receive sanitized views; credential stores
+remain blocked.
+
+Metadata checks such as `ls -l .env` are allowed. Supported directory searches
+such as `rg --hidden -n pattern .` are rewritten to exclude protected files at
+execution time. Additional command forms and limits are listed in the rules.
+
+Use `agent-secrets help` for the CLI and `agent-secrets version` for the package
+and Go versions. The private reader is an internal hook target, not a public
+configuration-export command.
+
+Client references: [Codex hooks and trust](https://learn.chatgpt.com/docs/hooks),
+[Claude Code hooks](https://code.claude.com/docs/en/hooks).

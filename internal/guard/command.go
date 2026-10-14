@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -8,10 +9,8 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// screenShell classifies arguments without executing expansions. Static search
-// patterns are removed from the subsequent code scan; paths, substitutions,
-// redirects, and sibling commands remain screened. Non-shell source retains
-// the literal credential checks in inspectCode.
+// screenShell checks shell operations and their argument roles without executing
+// expansions. Unparsed source is returned for the bounded script recognizer.
 func (g checker) screenShell(code string, depth int) (string, bool) {
 	f, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(code), "")
 	if err != nil {
@@ -20,18 +19,73 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 	if err != nil {
 		return code, false
 	}
-	view := []byte(code)
-	mask := func(node syntax.Node) {
-		for i := node.Pos().Offset(); i < node.End().Offset(); i++ {
-			if view[i] != '\n' {
-				view[i] = ' '
+	// A successful literal cd followed by && has one unambiguous base. Other
+	// compound directory changes are rejected below rather than guessed.
+	if len(f.Stmts) == 1 {
+		if b, ok := f.Stmts[0].Cmd.(*syntax.BinaryCmd); ok && b.Op == syntax.AndStmt {
+			if c, ok := b.X.Cmd.(*syntax.CallExpr); ok && len(c.Args) == 2 && len(c.Assigns) == 0 && len(b.X.Redirs) == 0 {
+				name, _, _ := literalWord(c.Args[0].Parts, false)
+				if name == "cd" {
+					p, ok := readWord(c.Args[1].Parts, code, g.home, false)
+					if !ok {
+						return "", true
+					}
+					if !filepath.IsAbs(p) {
+						p = filepath.Join(g.cwd, p)
+					}
+					g.cwd = filepath.Clean(p)
+					return "", g.inspectCode(code[b.Y.Pos().Offset():b.Y.End().Offset()], depth+1)
+				}
 			}
 		}
 	}
+	stdin := map[*syntax.CallExpr]bool{}
+	syntax.Walk(f, func(node syntax.Node) bool {
+		if s, ok := node.(*syntax.Stmt); ok {
+			if c, ok := s.Cmd.(*syntax.CallExpr); ok {
+				for _, r := range s.Redirs {
+					if r.Op == syntax.RdrIn || r.Hdoc != nil {
+						stdin[c] = true
+					}
+				}
+			}
+		}
+		if b, ok := node.(*syntax.BinaryCmd); ok && (b.Op == syntax.Pipe || b.Op == syntax.PipeAll) {
+			syntax.Walk(b.Y, func(n syntax.Node) bool {
+				if c, ok := n.(*syntax.CallExpr); ok {
+					stdin[c] = true
+				}
+				return true
+			})
+		}
+		return true
+	})
 	blocked := false
-	inspectWord := func(word *syntax.Word) {
+	inspectWord := func(g checker, word *syntax.Word) {
 		value, wildcard, ok := literalWord(word.Parts, false)
+		if !ok {
+			syntax.Walk(word, func(n syntax.Node) bool {
+				switch n.(type) {
+				case *syntax.CmdSubst, *syntax.ProcSubst:
+					blocked = true
+				}
+				return !blocked
+			})
+			value = code[word.Pos().Offset():word.End().Offset()]
+			value = strings.ReplaceAll(strings.ReplaceAll(value, "${PWD}", g.cwd), "$PWD", g.cwd)
+			value = strings.Trim(value, "\"'")
+			ok = true
+		}
 		if ok && (g.inspectPath(value, true) || wildcard && g.protected(value)) {
+			blocked = true
+		}
+		// File-bearing flags and upload operands are still paths after their
+		// syntactic prefix. Never grant the prefix a blanket exemption.
+		path := strings.TrimPrefix(value, "@")
+		if _, v, found := strings.Cut(path, "="); found {
+			path = strings.TrimPrefix(v, "@")
+		}
+		if path != value && g.inspectPath(path, true) {
 			blocked = true
 		}
 		// zsh appends qualifiers to the glob, e.g. .*(.) or *(D). Bash
@@ -47,6 +101,23 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 			return false
 		}
 		switch n := node.(type) {
+		case *syntax.DeclClause:
+			if next, ok := g.scopeCall(&syntax.CallExpr{Assigns: n.Args}); ok {
+				g = next
+			} else {
+				blocked = true
+			}
+			if len(n.Args) == 0 {
+				blocked = true
+			}
+			for _, a := range n.Args {
+				if a.Value != nil {
+					v, _, _ := literalWord(a.Value.Parts, false)
+					if strings.HasPrefix(v, "-") && strings.Contains(v, "p") {
+						blocked = true
+					}
+				}
+			}
 		case *syntax.ParamExp:
 			// These expansions belong to the outer shell, including unquoted
 			// heredocs. Inner quote characters cannot make them literal.
@@ -71,38 +142,107 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 			}
 			// Recursion has checked this complete subtree, including its
 			// expansions. Do not walk or reinterpret it a second time.
-			mask(n)
 			return false
 		case *syntax.CallExpr:
+			// command -v/-V resolves executable metadata, not an invocation.
+			if len(n.Args) >= 2 {
+				name, _, _ := literalWord(n.Args[0].Parts, false)
+				flag, _, _ := literalWord(n.Args[1].Parts, false)
+				if name == "command" && (flag == "-v" || flag == "-V") {
+					return true
+				}
+			}
+			op, valid := g.scopeCall(n)
+			if !valid {
+				blocked = true
+				return false
+			}
+			if len(n.Args) == 0 {
+				g = op
+			}
+			for i, w := range n.Args {
+				v, _, _ := literalWord(w.Parts, false)
+				if v == "-S" || v == "--split-string" {
+					if i+1 < len(n.Args) {
+						body, _, ok := literalWord(n.Args[i+1].Parts, false)
+						if !ok || op.inspectCode(body, depth+1) {
+							blocked = true
+						}
+					} else {
+						blocked = true
+					}
+				}
+			}
 			args := commandArgs(n.Args)
 			if len(args) == 0 {
-				return true
+				// Bare env (including wrappers/options) dumps the environment.
+				for _, w := range n.Args {
+					v, _, _ := literalWord(w.Parts, false)
+					if filepath.Base(v) == "env" {
+						blocked = true
+					}
+				}
+				return !blocked
 			}
 			name, _, _ := literalWord(args[0].Parts, false)
 			name = filepath.Base(name)
+			if environmentCommand(name, args[1:]) || credentialInspection(name, args[1:]) {
+				blocked = true
+				return false
+			}
+			if name == "cd" && len(f.Stmts) > 1 {
+				blocked = true
+				return false
+			}
+			if name == "cd" && f.Stmts[0].Cmd != n {
+				blocked = true
+				return false
+			}
 			if name == "ps" && processEnvironment(args[1:]) {
 				blocked = true
 				return false
 			}
 			patterns := searchPatterns(name, args[1:])
+			metadata := metadataCommand(name, args[1:])
+			if name == "find" && !metadata {
+				blocked = true
+				return false
+			}
+			if !metadata && op.searchNeedsControl(name, args[1:], stdin[n]) {
+				blocked = true
+				return false
+			}
 			for i, word := range n.Args {
 				value, wildcard, literal := literalWord(word.Parts, false)
 				if patterns[word] && literal && !wildcard {
-					mask(word)
 					continue
 				}
 				// Shell -c operands are code, including their own regex roles.
 				if isShell(name) && i > 0 && literal {
 					previous, _, _ := literalWord(n.Args[i-1].Parts, false)
 					if strings.HasPrefix(previous, "-") && strings.Contains(previous, "c") {
-						if g.inspectCode(value, depth+1) {
+						if op.inspectCode(value, depth+1) {
 							blocked = true
 						}
-						mask(word)
 						continue
 					}
 				}
-				inspectWord(word)
+				if scriptCommand(name) && i > 0 && literal {
+					previous, _, _ := literalWord(n.Args[i-1].Parts, false)
+					if previous == "-c" || previous == "-e" || previous == "--eval" {
+						if op.scriptBlocked(value, depth+1) {
+							blocked = true
+						}
+						continue
+					}
+				}
+				if metadata || literalOutput(name) {
+					continue
+				}
+				if transferSource(name, i, len(n.Args)) && literal && op.protectedDirectory(value) {
+					blocked = true
+				}
+				inspectWord(op, word)
 			}
 		case *syntax.Stmt:
 			call, ok := n.Cmd.(*syntax.CallExpr)
@@ -114,26 +254,33 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 				return true
 			}
 			name, _, _ := literalWord(args[0].Parts, false)
-			if isShell(filepath.Base(name)) {
+			if isShell(filepath.Base(name)) || scriptCommand(filepath.Base(name)) {
 				for _, redirect := range n.Redirs {
 					if redirect.Hdoc != nil {
 						body := code[redirect.Hdoc.Pos().Offset():redirect.Hdoc.End().Offset()]
-						if g.inspectCode(body, depth+1) {
+						unsafe := false
+						if isShell(filepath.Base(name)) {
+							unsafe = g.inspectCode(body, depth+1)
+						} else {
+							unsafe = g.scriptBlocked(body, depth+1)
+						}
+						if unsafe {
 							blocked = true
 						}
-						mask(redirect.Hdoc)
 					}
 				}
 			}
 		case *syntax.Redirect:
 			if n.Hdoc == nil {
-				inspectWord(n.Word)
+				inspectWord(g, n.Word)
 			}
 		}
 		return !blocked
 	})
-	return string(view), blocked
+	return "", blocked
 }
+
+func isDirectory(p string) bool { st, err := os.Stat(p); return err == nil && st.IsDir() }
 
 // Legacy backquotes remove one escaping layer before the body is parsed.
 // Backslashes otherwise remain literal; this never performs expansions.

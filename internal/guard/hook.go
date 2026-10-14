@@ -1,12 +1,12 @@
 package guard
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"path/filepath"
 	"strings"
 
+	"github.com/Astatine-213-Tian/agent-secrets/internal/install"
 	"github.com/Astatine-213-Tian/agent-secrets/internal/policy"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -25,7 +25,9 @@ func Hook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string) (
 		_, _ = io.WriteString(stderr, Reason+"\n")
 		return 2
 	}
-	if updated := rewriteRead(data, home, cwd, binary); updated != nil {
+	decision := Evaluate(data, home, cwd, binary)
+	if decision.Kind == Rewrite {
+		updated := decision.Input
 		b, err := json.Marshal(map[string]any{"hookSpecificOutput": map[string]any{
 			"hookEventName":      "PreToolUse",
 			"permissionDecision": "allow",
@@ -40,26 +42,14 @@ func Hook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string) (
 		}
 		return 0
 	}
-	return Check(bytes.NewReader(data), stderr, home, cwd)
+	if decision.Kind == Allow {
+		return 0
+	}
+	_, _ = io.WriteString(stderr, Reason+"\n")
+	return 2
 }
 
-func rewriteRead(data []byte, home, cwd, binary string) map[string]any {
-	if !filepath.IsAbs(home) || !filepath.IsAbs(binary) {
-		return nil
-	}
-	var payload map[string]any
-	d := json.NewDecoder(bytes.NewReader(data))
-	d.UseNumber()
-	if d.Decode(&payload) != nil || payload == nil {
-		return nil
-	}
-	var trailing any
-	if d.Decode(&trailing) != io.EOF {
-		return nil
-	}
-	if event, exists := payload["hook_event_name"]; exists && event != "PreToolUse" {
-		return nil
-	}
+func rewriteRead(payload map[string]any, home, cwd, binary string) map[string]any {
 	tool, _ := payload["tool_name"].(string)
 	key := "command"
 	switch tool {
@@ -87,7 +77,10 @@ func rewriteRead(data []byte, home, cwd, binary string) map[string]any {
 			cwd = filepath.Join(cwd, p)
 		}
 	}
-	reader, options, ok := configRead(command, home, cwd)
+	plan, ok := readPlan(command, home, cwd)
+	if !ok {
+		plan, ok = searchPlan(command, home, cwd)
+	}
 	if !ok {
 		return nil
 	}
@@ -100,11 +93,16 @@ func rewriteRead(data []byte, home, cwd, binary string) map[string]any {
 		}
 	}
 	g := checker{home: home, cwd: cwd, tool: strings.ToLower(tool)}
-	if g.inspect(updated, "") {
+	siblings := make(map[string]any, len(updated))
+	for k, v := range updated {
+		if k != "workdir" {
+			siblings[k] = v
+		}
+	}
+	if g.inspect(siblings, "") {
 		return nil
 	}
-	words := []string{binary, "__read-codex-config", home, reader}
-	words = append(words, options...)
+	words := []string{binary, "__run", plan.Encode()}
 	for i, word := range words {
 		words[i] = "'" + strings.ReplaceAll(word, "'", "'\"'\"'") + "'"
 	}
@@ -113,40 +111,44 @@ func rewriteRead(data []byte, home, cwd, binary string) map[string]any {
 }
 
 // Recognize one simple read. Never run expansion or reuse unparsed shell text.
-func configRead(command, home, cwd string) (string, []string, bool) {
+func readPlan(command, home, cwd string) (policy.Plan, bool) {
+	no := policy.Plan{}
 	f, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(command), "")
 	if err != nil || len(f.Stmts) != 1 {
-		return "", nil, false
+		return no, false
 	}
 	s := f.Stmts[0]
 	call, ok := s.Cmd.(*syntax.CallExpr)
 	if !ok || s.Negated || s.Background || s.Coprocess || s.Disown || len(call.Assigns) != 0 {
-		return "", nil, false
+		return no, false
 	}
 	words := make([]string, len(call.Args))
 	for i, word := range call.Args {
 		var valid bool
 		words[i], valid = readWord(word.Parts, command, home, false)
 		if !valid {
-			return "", nil, false
+			words[i], valid = (checker{home: home, cwd: cwd}).pathWord(word.Parts)
+		}
+		if !valid {
+			return no, false
 		}
 	}
 	if len(words) > 0 && words[0] == "command" {
 		words = words[1:]
 	}
 	if len(words) == 0 {
-		return "", nil, false
+		return no, false
 	}
 	reader := filepath.Base(words[0])
 	if words[0] != reader && words[0] != "/bin/"+reader && words[0] != "/usr/bin/"+reader {
-		return "", nil, false
+		return no, false
 	}
 	options := words[1:]
 	var path string
 	switch len(s.Redirs) {
 	case 0:
 		if len(options) == 0 {
-			return "", nil, false
+			return no, false
 		}
 		path, options = options[len(options)-1], options[:len(options)-1]
 		if len(options) > 0 && options[len(options)-1] == "--" {
@@ -155,23 +157,26 @@ func configRead(command, home, cwd string) (string, []string, bool) {
 	case 1:
 		r := s.Redirs[0]
 		if r.Op != syntax.RdrIn || (r.N != nil && r.N.Value != "0") {
-			return "", nil, false
+			return no, false
 		}
 		path, ok = readWord(r.Word.Parts, command, home, false)
 		if !ok {
-			return "", nil, false
+			path, ok = (checker{home: home, cwd: cwd}).pathWord(r.Word.Parts)
+		}
+		if !ok {
+			return no, false
 		}
 	default:
-		return "", nil, false
+		return no, false
 	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(cwd, path)
 	}
-	if filepath.Clean(path) != filepath.Join(home, ".codex/config.toml") {
-		return "", nil, false
+	if install.Locations(home, cwd).ConfigFormat(path) == "" {
+		return no, false
 	}
 	_, ok = policy.ConfigReadFilter(reader, options)
-	return reader, options, ok
+	return policy.Plan{Kind: "read", Path: filepath.Clean(path), Cwd: cwd, Reader: reader, Args: options}, ok
 }
 
 func readWord(parts []syntax.WordPart, source, home string, quoted bool) (string, bool) {
@@ -214,4 +219,53 @@ func readWord(parts []syntax.WordPart, source, home string, quoted bool) (string
 		}
 	}
 	return out.String(), true
+}
+
+func searchPlan(command, home, cwd string) (policy.Plan, bool) {
+	no := policy.Plan{}
+	f, e := syntax.NewParser().Parse(strings.NewReader(command), "")
+	if e != nil || len(f.Stmts) != 1 {
+		return no, false
+	}
+	stmt := f.Stmts[0]
+	call, ok := stmt.Cmd.(*syntax.CallExpr)
+	if !ok || stmt.Negated || stmt.Background || stmt.Coprocess || stmt.Disown || len(stmt.Redirs) > 0 || len(call.Assigns) > 0 {
+		return no, false
+	}
+	words := make([]string, len(call.Args))
+	for i, w := range call.Args {
+		var ok bool
+		words[i], ok = readWord(w.Parts, command, home, false)
+		if !ok {
+			words[i], ok = (checker{home: home, cwd: cwd}).pathWord(w.Parts)
+		}
+		if !ok {
+			return no, false
+		}
+	}
+	if len(words) > 0 && words[0] == "command" {
+		words = words[1:]
+	}
+	if len(words) == 0 || (words[0] != "rg" && words[0] != "/opt/homebrew/bin/rg" && words[0] != "/usr/local/bin/rg" && words[0] != "/usr/bin/rg") {
+		return no, false
+	}
+	search, ok := policy.ParseSearch(words[1:])
+	if !ok {
+		return no, false
+	}
+	g := checker{home: home, cwd: cwd}
+	needs := false
+	for _, root := range search.Roots {
+		if g.protected(root) {
+			return no, false
+		}
+		if !filepath.IsAbs(root) {
+			root = filepath.Join(cwd, root)
+		}
+		needs = needs || isDirectory(root)
+	}
+	if !needs {
+		return no, false
+	}
+	return policy.Plan{Kind: "search", Cwd: cwd, Args: words[1:]}, true
 }
