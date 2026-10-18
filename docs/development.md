@@ -1,8 +1,8 @@
 # Development and verification
 
-Read [the rules](rules.md) before changing recognition, redaction, or supported
-tool coverage. Keep [usage](usage.md) current when changing installation or CLI
-behavior.
+Read [the rules](rules.md) and [rule reference](rule-reference.md) before changing
+recognition, redaction, or supported tool coverage.
+Keep [usage](usage.md) current when changing installation or CLI behavior.
 The [design](design.md) explains module boundaries and the decision model.
 
 ## Toolchain and ownership

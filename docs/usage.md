@@ -1,6 +1,7 @@
 # Installation and usage
 
-Read the [protection rules](rules.md) for exact redaction, blocking, and coverage.
+Read the [protection rules](rules.md) for common examples.
+Use the [rule reference](rule-reference.md) for exact checks and limits.
 
 ## Install
 
@@ -81,14 +82,17 @@ cat ~/.codex/config.toml | sed -n '1,120p'
 
 The hook rewrites supported reads automatically. The tool receives a redacted
 inspection view; line numbers refer to that view, not the original file.
-The [redaction rules](rules.md#redaction-rules) specify credential matches and
-the basic read bridge. Native downstream tools keep their full option support;
-direct raw reads of protected configs remain denied. Unmatched settings remain visible. Supported reads of Docker,
-Claude, and npm configuration also receive sanitized views; credential stores
+The [redaction reference](rule-reference.md#redaction-rules) lists the value
+checks and supported read forms. Tools after the pipe keep their normal options.
+The hook still blocks known raw reads of protected configuration files.
+Unmatched settings remain visible. Supported reads of Docker, Claude, and npm
+configuration also hide detected secrets. Known reads of credential stores
 remain blocked.
 
 Metadata checks such as `ls -l .env` are allowed. Native directory searches such
 as `rg --hidden --max-count 2 pattern .` receive protected-path exclusions.
+Application commands such as `uv run --env-file .env app.py` are allowed;
+shell filename checks apply only to the [listed file commands](rule-reference.md#operation-checks).
 Pipelines and compound searches keep their original shell behavior. Coverage
 and limits are listed in the rules.
 
