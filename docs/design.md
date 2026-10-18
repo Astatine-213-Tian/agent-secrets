@@ -25,6 +25,11 @@ variable names and templates. Unknown options and harmless shell composition
 are not reasons for denial. Small recognizers identify specific disclosure
 operations and distinguish literal patterns from paths.
 
+Shell filename checks apply only to the finite common file-command set in
+`guard/operations.go`. Other applications may receive protected filenames as
+arguments without an exemption per application. Nested execution, expansions,
+redirections, explicit file APIs, and recognized dumps have independent checks.
+
 The two deliberate rewriting exceptions are a basic config-read bridge and
 native ripgrep exclusions. Reader-option emulation and private search execution
 are absent. `guard/read.go` owns the config bridge; `guard/search.go` owns the
@@ -50,7 +55,7 @@ This ordering is shared by both rewrite paths.
 Named checks cover:
 
 - Metadata and literal output: allow known forms while checking expansions.
-- Content access and transfer: deny protected reads, exports, copies, and moves.
+- Content access and transfer: deny recognized protected reads, exports, copies, and moves.
 - Environment exposure: distinguish ordinary variables from credentials and dumps.
 - Inspection commands: deny recognized credential-bearing dumps and selections.
 - Content searches: screen explicit operands and add native ripgrep path exclusions.

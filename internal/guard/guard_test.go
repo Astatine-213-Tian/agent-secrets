@@ -122,7 +122,10 @@ func TestPythonWildcardImports(t *testing.T) {
 		check(t, "exec_command", map[string]any{"cmd": command + "\ncat .env"}, home, cwd, 2)
 		check(t, "exec_command", map[string]any{"cmd": command + "\nprintenv"}, home, cwd, 2)
 	}
-	for _, command := range []string{"cat *", "from helpers import *; cat *", "from helpers import * .env", "from helpers import *\nopen('.env').read()"} {
+	// Parsed as a shell invocation of an unknown "from" command, this has
+	// no recognized content-read operation. A filename alone is not denied.
+	check(t, "exec_command", map[string]any{"cmd": "from helpers import * .env"}, home, cwd, 0)
+	for _, command := range []string{"cat *", "from helpers import *; cat *", "from helpers import *\nopen('.env').read()"} {
 		check(t, "exec_command", map[string]any{"cmd": command}, home, cwd, 2)
 	}
 }

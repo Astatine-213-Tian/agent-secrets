@@ -23,6 +23,20 @@ func literalArgs(args []*syntax.Word) ([]string, bool) {
 	return out, static
 }
 
+// Only common file-handling commands have their operands screened as paths.
+// An arbitrary application receiving a credential path is not itself evidence
+// of disclosure. Expansions, nested code, redirects, and dumps are separate
+// checks, including when the outer command is not recognized here.
+func fileCommand(name string) bool {
+	switch name {
+	case "cat", "head", "tail", "less", "more", "sed", "awk", "cut", "paste", "sort", "uniq", "diff",
+		"rg", "grep", "egrep", "fgrep", "jq", "yq", "strings", "od", "xxd", "hexdump", "base64",
+		"cp", "mv", "rsync", "scp", "sftp", "tar", "zip", "dd", "tee", "curl", "wget", "find":
+		return true
+	}
+	return false
+}
+
 // These commands do not open operands for contents. Shell expansions and
 // redirects remain separate operations and are always checked by the walker.
 func metadataCommand(name string, args []*syntax.Word) bool {
@@ -87,8 +101,6 @@ func (g checker) protectedDirectory(value string) bool {
 	}
 	return false
 }
-
-func literalOutput(name string) bool { return name == "echo" || name == "printf" }
 
 func environmentCommand(name string, args []*syntax.Word) bool {
 	words, static := literalArgs(args)

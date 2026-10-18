@@ -1,6 +1,6 @@
 # Protection rules
 
-Agent Secrets uses **filename and operation checks for ordinary files** and
+Agent Secrets uses **filename checks for recognized file operations** and
 **selective value redaction for supported configuration reads**. It does not
 scan every source file for secret-looking variable names. Unmatched config
 values remain visible; there is no setting, type, or safe-value allowlist.
@@ -49,12 +49,27 @@ directory. Recognized computed location changes are rejected.
 | --- | --- |
 | `ls`, `stat`, existence tests, ordinary `find` listing | Allow: names and metadata do not disclose file values. |
 | Literal output, messages, edit replacement text, search patterns | Literal mentions of `.env` are not reads. |
-| Read, content-search, upload, copy, rename, or patch a protected file | Deny raw access. Supported config reads can be rewritten. |
-| Copy/rename/export a conventional credential directory as source | Deny, including its containing home directory. Copying an ordinary file into the home directory is allowed. |
-| Write/edit a protected file | Deny; tools can expose previous contents or diffs. No blanket write-only exemption. |
+| Recognized read, content-search, upload, copy, rename, or patch of a protected file | Deny raw access. Supported config reads can be rewritten. |
+| Recognized copy/rename/export of a conventional credential directory as source | Deny, including its containing home directory. Copying an ordinary file into the home directory is allowed. |
+| Recognized write/edit of a protected file | Deny; tools can expose previous contents or diffs. No blanket write-only exemption. |
 | `find` actions | Inspect explicit nested commands and protected operands. Common bulk readers such as `-exec cat {} +` are denied; `-exec basename {} \;` is allowed. |
 | Environment, process-environment, or credential-store dumps | Deny. |
-| Application internally using credentials | Authentication alone is not a reason to block. |
+| Other application commands with credential-file arguments | Allow unless a separate recognized operation is denied. A protected filename alone is not a reason to block. |
+
+Shell operand checks apply to this finite set of common file-handling commands:
+`cat`, `head`, `tail`, `less`, `more`, `sed`, `awk`, `cut`, `paste`, `sort`,
+`uniq`, `diff`, `rg`, `grep`, `egrep`, `fgrep`, `jq`, `yq`, `strings`, `od`,
+`xxd`, `hexdump`, `base64`, `cp`, `mv`, `rsync`, `scp`, `sftp`, `tar`, `zip`,
+`dd`, `tee`, `curl`, `wget`, and `find`. Metadata and search-pattern roles
+still apply. Recognized wrappers (`command`, `exec`, `sudo`, `env`) use the
+underlying command's checks. Native options are not validated; protected path
+arguments to these commands remain conservatively screened.
+
+Other command names do not trigger filename checks on their ordinary arguments.
+For example, `uv run --env-file .env app.py`, `node --env-file=.env app.js`,
+and `my-app --config .env` are allowed by the same general rule. There are no
+application-specific exemptions. Direct file-tool paths, patch targets,
+recognized inline file APIs, and shell redirections remain screened.
 
 **`ls -l .env` is allowed**: it does not reveal environment values. `cat .env`,
 `cp .env public.txt`, and `curl --data-binary @.env …` are denied.
@@ -257,10 +272,12 @@ requires at least eight characters, excluding the explanatory words `token`,
 This is an accidental-disclosure guard, not filesystem isolation or a general
 interpreter. Unknown secret filenames, arbitrary unlabeled values, custom token
 formats, hard links, opaque encodings, dynamically assembled paths/programs,
-and unrecognized tool schemas can escape the heuristics. A random secret under
-an innocent key is not guaranteed to be redacted. Application output and
-network responses are not generally filtered. General directory transfers are
-not a sandbox-enforced file policy.
+and unrecognized tool schemas can escape the heuristics. Commands outside the
+finite file-command set, including custom readers and readers hidden behind
+unsupported application launchers, are not classified by their file arguments.
+A random secret under an innocent key is not guaranteed to be redacted.
+Application output and network responses are not generally filtered. General
+directory transfers are not a sandbox-enforced file policy.
 
 The private runner controls its reads and revalidates untrusted plans. Ordinary
 allowed tools still execute in the client and can race with changes after

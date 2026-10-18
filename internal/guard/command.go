@@ -211,7 +211,7 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 						continue
 					}
 				}
-				if metadata && !searchFileInput(name, n.Args, i) || literalOutput(name) {
+				if !fileCommand(name) || metadata && !searchFileInput(name, n.Args, i) {
 					continue
 				}
 				if transferSource(name, i, len(n.Args)) && literal && op.protectedDirectory(value) {
