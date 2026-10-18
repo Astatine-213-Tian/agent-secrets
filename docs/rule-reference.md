@@ -70,8 +70,8 @@ arguments to these commands remain conservatively screened.
 
 Other command names do not trigger filename checks on their ordinary arguments.
 For example, `uv run --env-file .env app.py`, `node --env-file=.env app.js`,
-and `my-app --config .env` are allowed by the same general rule. There are no
-application-specific exemptions. Direct file-tool paths, patch targets,
+and `my-app --config .env` are allowed by the same general rule.
+Direct file-tool paths, patch targets,
 recognized inline file APIs, and shell redirections remain screened.
 
 **`ls -l .env` is allowed**: it does not reveal environment values. `cat .env`,

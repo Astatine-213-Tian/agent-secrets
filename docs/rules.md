@@ -20,7 +20,6 @@ It also hides detected secret values when it shows supported configuration files
 | `printenv` | Block | It can print secret environment values. |
 
 Filename checks apply to a [fixed list of common file commands](rule-reference.md#operation-checks).
-There is no special exception for `uv`.
 Other commands can still trigger separate checks for secret access.
 
 The hook checks commands inside `$()` and `sh -c`.
