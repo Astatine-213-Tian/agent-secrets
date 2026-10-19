@@ -58,7 +58,7 @@ overrides the process working directory; tool `workdir` is resolved from it.
 | Outcome | Exit code | Output |
 | --- | --- | --- |
 | Ordinary allow | `0` | Silent. |
-| Supported config read or native ripgrep call | `0` | JSON `hookSpecificOutput` with `hookEventName: "PreToolUse"`, `permissionDecision: "allow"`, and `updatedInput`. |
+| Supported config read or native ripgrep call | `0` | JSON `hookSpecificOutput` with `hookEventName: "PreToolUse"` and `updatedInput`. `hook` adds `permissionDecision: "allow"`, which Codex requires with `updatedInput`; `hook --client claude` omits it, because Claude Code treats `allow` as skipping its permission prompt for the whole command. |
 | Denied, malformed, oversized, or uninspectable request | `2` | No stdout; fixed denial on stderr. |
 
 The denial is exactly:

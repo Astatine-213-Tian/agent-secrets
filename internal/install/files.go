@@ -89,10 +89,10 @@ func Inspect(home string, source []byte) Status {
 	s := Status{Readable: e == nil, BinaryMatches: e == nil && len(source) > 0 && bytes.Equal(b, source)}
 	b, e = readOptional(filepath.Join(home, ".codex/hooks.json"))
 	s.Readable = s.Readable && e == nil
-	s.CodexHook = e == nil && hasHook(b, binary)
+	s.CodexHook = e == nil && hasHook(b, command(binary))
 	b, e = readOptional(filepath.Join(home, ".claude/settings.json"))
 	s.Readable = s.Readable && e == nil
-	s.ClaudeHook = e == nil && hasHook(b, binary)
+	s.ClaudeHook = e == nil && hasHook(b, claudeCommand(binary))
 	return s
 }
 func readOptional(p string) ([]byte, error) {

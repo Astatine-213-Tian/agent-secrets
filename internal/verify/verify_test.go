@@ -13,6 +13,12 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if len(os.Args) == 4 && os.Args[1] == "hook" && os.Args[2] == "--client" && os.Args[3] == "claude" {
+		home, _ := os.UserHomeDir()
+		cwd, _ := os.Getwd()
+		exe, _ := os.Executable()
+		os.Exit(guard.ClaudeHook(os.Stdin, os.Stdout, os.Stderr, home, cwd, exe))
+	}
 	if len(os.Args) == 2 && (os.Args[1] == "guard" || os.Args[1] == "hook") {
 		home, _ := os.UserHomeDir()
 		cwd, _ := os.Getwd()

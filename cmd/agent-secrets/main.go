@@ -32,7 +32,8 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 	}
 	switch args[0] {
 	case "guard", "hook":
-		if len(args) != 1 {
+		claude := args[0] == "hook" && len(args) == 3 && args[1] == "--client" && args[2] == "claude"
+		if len(args) != 1 && !claude {
 			fmt.Fprintln(errOut, guard.Reason)
 			return 2
 		}
@@ -46,6 +47,9 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 			if err != nil {
 				fmt.Fprintln(errOut, guard.Reason)
 				return 2
+			}
+			if claude {
+				return guard.ClaudeHook(in, out, errOut, home, cwd, exe)
 			}
 			return guard.Hook(in, out, errOut, home, cwd, exe)
 		}

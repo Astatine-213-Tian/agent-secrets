@@ -94,10 +94,33 @@ func Process(ctx context.Context, binary, home string) Report {
 	}
 	r.Checks = append(r.Checks, configViewProbes(ctx, binary)...)
 	r.Checks = append(r.Checks, searchProbes(ctx, binary)...)
+	r.Checks = append(r.Checks, Check{"claude_rewrite_keeps_permissions", claudeRewrite(ctx, binary)})
 	for _, c := range r.Checks {
 		r.Passed = r.Passed && c.Passed
 	}
 	return r
+}
+
+// Claude Code treats "allow" as skipping its permission prompt for the whole
+// command, so its hook form must rewrite without any permission decision.
+func claudeRewrite(ctx context.Context, binary string) bool {
+	request, _ := json.Marshal(map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "rg needle . && touch done"}})
+	c := exec.CommandContext(ctx, binary, "hook", "--client", "claude")
+	c.Stdin = bytes.NewReader(request)
+	var stdout, stderr bytes.Buffer
+	c.Stdout, c.Stderr = &stdout, &stderr
+	if c.Run() != nil || stderr.Len() != 0 {
+		return false
+	}
+	var response struct {
+		Output map[string]any `json:"hookSpecificOutput"`
+	}
+	if json.Unmarshal(stdout.Bytes(), &response) != nil || response.Output["hookEventName"] != "PreToolUse" {
+		return false
+	}
+	_, decided := response.Output["permissionDecision"]
+	input, _ := response.Output["updatedInput"].(map[string]any)
+	return !decided && input["command"] != nil
 }
 
 func searchProbes(ctx context.Context, binary string) []Check {

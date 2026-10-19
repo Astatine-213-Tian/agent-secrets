@@ -24,8 +24,8 @@ The installer copies the executable to
 `~/.local/share/agent-secrets/agent-secrets` and merges a `PreToolUse` command
 hook with matcher `*` and a five-second timeout into:
 
-- `~/.codex/hooks.json`
-- `~/.claude/settings.json`
+- `~/.codex/hooks.json`, as `agent-secrets hook`
+- `~/.claude/settings.json`, as `agent-secrets hook --client claude`
 
 Unrelated settings, hook handlers, and JSON number precision are preserved.
 Both settings documents are parsed before replacement. Existing settings are
@@ -36,8 +36,8 @@ a transaction across the binary and both settings files; after a failure,
 check status before relying on the result.
 
 Repeated installation keeps the registrations idempotent, while making fresh
-backups. Registrations using the same binary's old `guard` command are replaced
-with `hook` so automatic redaction runs. `install --home PATH` targets another
+backups. Registrations using the same binary's old `guard` command, or the other
+client's `hook` form, are replaced so each client gets its own form. `install --home PATH` targets another
 home directory; run the clients with the corresponding home. Run installation
 as your normal user, without `sudo`. If an agent sandbox denies access to the
 settings, perform the installation in your own terminal. The installer does

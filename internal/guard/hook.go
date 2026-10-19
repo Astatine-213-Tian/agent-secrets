@@ -7,7 +7,20 @@ import (
 
 // Hook adds transparent shell-read rewriting to Check. Neither path reads any
 // configuration contents. Only the rewritten tool's private runner does that.
-func Hook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string) (code int) {
+// A rewrite carries permissionDecision "allow", which Codex requires with
+// updatedInput; Codex still applies its own approval policy afterwards.
+func Hook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string) int {
+	return hook(input, stdout, stderr, home, cwd, binary, true)
+}
+
+// ClaudeHook is Hook for Claude Code, where "allow" would skip the permission
+// prompt for the whole command. A rewrite there omits the decision, so the
+// rewritten input goes through Claude Code's normal permission evaluation.
+func ClaudeHook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string) int {
+	return hook(input, stdout, stderr, home, cwd, binary, false)
+}
+
+func hook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string, allow bool) (code int) {
 	defer func() {
 		if recover() != nil {
 			_, _ = io.WriteString(stderr, Reason+"\n")
@@ -22,11 +35,11 @@ func Hook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string) (
 	decision := Evaluate(data, home, cwd, binary)
 	if decision.Kind == Rewrite {
 		updated := decision.Input
-		b, err := json.Marshal(map[string]any{"hookSpecificOutput": map[string]any{
-			"hookEventName":      "PreToolUse",
-			"permissionDecision": "allow",
-			"updatedInput":       updated,
-		}})
+		output := map[string]any{"hookEventName": "PreToolUse", "updatedInput": updated}
+		if allow {
+			output["permissionDecision"] = "allow"
+		}
+		b, err := json.Marshal(map[string]any{"hookSpecificOutput": output})
 		if err == nil {
 			_, err = stdout.Write(append(b, '\n'))
 		}

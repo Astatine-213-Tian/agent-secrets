@@ -65,6 +65,24 @@ func TestReplacesOwnHandlerInSharedGroup(t *testing.T) {
 	}
 }
 
+func TestClientHookForms(t *testing.T) {
+	// An older install registered the Codex form in Claude settings too.
+	in := install.Documents{
+		Codex:  []byte(`{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"'/bin/agent-secrets' hook"}]}]}}`),
+		Claude: []byte(`{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"'/bin/agent-secrets' hook"},{"command":"other"}]}]}}`),
+	}
+	out, e := install.Prepare("/bin/agent-secrets", in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if strings.Count(string(out.Codex), "'/bin/agent-secrets' hook") != 1 || bytes.Contains(out.Codex, []byte("--client")) {
+		t.Fatal("codex form changed")
+	}
+	if strings.Count(string(out.Claude), "'/bin/agent-secrets' hook") != 1 || strings.Count(string(out.Claude), "'/bin/agent-secrets' hook --client claude") != 1 || !bytes.Contains(out.Claude, []byte("other")) {
+		t.Fatal("claude form not replaced exactly once")
+	}
+}
+
 func TestQuotedInstallationPath(t *testing.T) {
 	out, e := install.Prepare("/home/a user's directory/agent-secrets", install.Documents{})
 	if e != nil {
