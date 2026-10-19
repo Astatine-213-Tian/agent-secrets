@@ -10,8 +10,9 @@ import (
 
 var quotedCode = regexp.MustCompile(`(?s)"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'` + "|`(?:\\\\.|[^`\\\\])*`")
 
-// A print call whose argument is a credential lookup or the whole environment.
-var printedEnvironment = regexp.MustCompile(`\b(?:print|console\.(?:log|info|warn|error))\s*\(\s*(?:(?:os\.getenv|os\.environ\.get)\s*\(\s*["']([A-Za-z_]\w*)["']|os\.environ\s*\[\s*["']([A-Za-z_]\w*)["']\s*\]|process\.env\.([A-Za-z_]\w*)|process\.env\s*\[\s*["']([A-Za-z_]\w*)["']\s*\]|(?:dict\s*\(\s*|JSON\.stringify\s*\(\s*)?(?:os\.environ|process\.env)\s*\))`)
+// A print call with an argument that is a credential lookup or the environment.
+// Expressions such as print(os.getenv("API_KEY") is not None) print no value.
+var printedEnvironment = regexp.MustCompile(`\b(?:print|console\.(?:log|info|warn|error))\s*\((?:[^()]*?,)?\s*(?:(?:(?:os\.getenv|os\.environ\.get)\s*\(\s*["']([A-Za-z_]\w*)["']\s*(?:,[^()]*)?\)|os\.environ\s*\[\s*["']([A-Za-z_]\w*)["']\s*\]|process\.env\.([A-Za-z_]\w*)|process\.env\s*\[\s*["']([A-Za-z_]\w*)["']\s*\])\s*[),]|(?:dict\s*\(\s*|JSON\.stringify\s*\(\s*)?(?:os\.environ|process\.env)\s*\))`)
 
 var executableLiteral = regexp.MustCompile(`(?s)(?:\b(?:cmd|command|script|code)\s*:\s*|(?:os\.system|execSync|exec|eval|subprocess\.(?:run|call|check_output|Popen))\s*\(\s*\[?\s*)$`)
 var fileLiteral = regexp.MustCompile(`(?s)(?:\b(?:open|Path|readFile|readFileSync|ReadFile|writeFile|writeFileSync)\s*\(\s*|\b(?:path|file_path|filename)\s*:\s*)$`)
