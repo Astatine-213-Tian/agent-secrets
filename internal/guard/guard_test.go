@@ -113,6 +113,24 @@ func TestLongCodeLiterals(t *testing.T) {
 	}
 }
 
+func TestLongMetadataValues(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	mockup := strings.Repeat("| Q: How do I reset my password?   [v] |\n", 12)
+	for _, prose := range []string{strings.Repeat("x", 256), mockup, strings.Repeat("书中文字与标点。", 150)} {
+		question := map[string]any{"question": prose, "header": "Layout", "multiSelect": false, "options": []any{
+			map[string]any{"label": prose, "description": "Collapsed answers", "preview": prose},
+			map[string]any{"label": "Flat list", "description": "All answers visible"},
+		}}
+		check(t, "AskUserQuestion", map[string]any{"questions": []any{question}}, home, cwd, 0)
+		// A long value does not exempt lexical checks, protected locations,
+		// sibling paths, or explicit path arguments.
+		check(t, "AskUserQuestion", map[string]any{"questions": []any{question}, "path": ".env"}, home, cwd, 2)
+		check(t, "mcp__notes__save", map[string]any{"note": prose + " see .env"}, home, cwd, 2)
+		check(t, "mcp__notes__save", map[string]any{"note": filepath.Join(home, ".aws/credentials", prose)}, home, cwd, 2)
+		check(t, "Read", map[string]any{"file_path": prose}, home, cwd, 2)
+	}
+}
+
 func TestPythonWildcardImports(t *testing.T) {
 	home, cwd := t.TempDir(), t.TempDir()
 	for _, statement := range []string{"from page_helpers import *", "from package.helpers import *", "from .helpers import *", "from .. import *", "  from helpers import * # shared functions"} {

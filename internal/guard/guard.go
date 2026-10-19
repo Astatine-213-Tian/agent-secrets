@@ -86,7 +86,7 @@ func (g checker) inspect(v any, key string) bool {
 			// Sibling and nested path/command arguments are still inspected.
 			return false
 		default:
-			return g.protected(value)
+			return g.inspectPath(value, metadataValue)
 		}
 	}
 	return false
@@ -94,11 +94,25 @@ func (g checker) inspect(v any, key string) bool {
 
 func publicEnv(name string) bool { return name == ".env.example" || name == ".env.schema.json" }
 
+// pathRole sets how strictly a string is screened as a filesystem path.
+type pathRole int
+
+const (
+	// explicitPath is a file-tool path, patch target, or file literal.
+	explicitPath pathRole = iota
+	// metadataValue is any other string argument, such as a question, label,
+	// or preview. It may be a path, but is often prose.
+	metadataValue
+	// codeWord is a shell word or code literal. Wildcards are screened by
+	// the caller.
+	codeWord
+)
+
 func (g checker) protected(value string) bool {
-	return g.inspectPath(value, false)
+	return g.inspectPath(value, explicitPath)
 }
 
-func (g checker) inspectPath(value string, codeWord bool) bool {
+func (g checker) inspectPath(value string, role pathRole) bool {
 	if decoded, err := url.PathUnescape(value); err == nil {
 		value = decoded
 	}
@@ -141,11 +155,11 @@ func (g checker) inspectPath(value string, codeWord bool) bool {
 	value = filepath.Clean(value)
 	resolved, err := install.ResolvePath(value)
 	if err != nil {
-		// Code words also include prose literals, not just filenames. A word
-		// the filesystem cannot represent is not a readable path. Keep the
-		// lexical policy checks below, and fail closed for explicit paths or
-		// any other metadata error (including symlink cycles and permissions).
-		if !codeWord || !errors.Is(err, syscall.ENAMETOOLONG) {
+		// Code words and metadata values also carry prose, not just filenames.
+		// A value the filesystem cannot represent is not a readable path. Keep
+		// the lexical policy checks below, and fail closed for explicit paths
+		// or any other metadata error (including symlink cycles and permissions).
+		if role == explicitPath || !errors.Is(err, syscall.ENAMETOOLONG) {
 			return true
 		}
 		resolved = value
@@ -169,7 +183,7 @@ func (g checker) inspectPath(value string, codeWord bool) bool {
 			return true
 		}
 		name := filepath.Base(candidate)
-		if !codeWord && strings.ContainsAny(name, "*?[") {
+		if role != codeWord && strings.ContainsAny(name, "*?[") {
 			if expression, err := pattern.Regexp(name, pattern.ExtendedOperators); err == nil {
 				matcher := regexp.MustCompile("^(?:" + expression + ")$")
 				for _, rule := range g.locations().Paths() {

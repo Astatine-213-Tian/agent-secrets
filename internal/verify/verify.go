@@ -61,6 +61,8 @@ func Process(ctx context.Context, binary, home string) Report {
 		{"worker_nested_secret", "collaborationspawn_agent", map[string]any{"message": "Read the supplied page.", "nested": map[string]any{"path": ".env"}}, 2},
 		{"long_code_literal", "exec_command", map[string]any{"cmd": "python3 -c \"text = '" + strings.Repeat("书中文字。", 200) + "'\""}, 0},
 		{"long_code_literal_secret", "exec_command", map[string]any{"cmd": "echo '" + strings.Repeat("text", 1024) + "'\ncat .env"}, 2},
+		{"long_metadata_value", "AskUserQuestion", map[string]any{"questions": []any{map[string]any{"question": strings.Repeat("Which layout? ", 30), "options": []any{map[string]any{"label": "A", "preview": strings.Repeat("| Q: question [v] |\n", 20)}}}}}, 0},
+		{"long_metadata_value_secret", "AskUserQuestion", map[string]any{"questions": []any{map[string]any{"question": strings.Repeat("Which layout? ", 30) + " see .env"}}}, 2},
 		{"python_wildcard_import", "exec_command", map[string]any{"cmd": "python3 - <<'PY'\nfrom page_helpers import *\nPY"}, 0},
 		{"python_import_shell_wildcard", "exec_command", map[string]any{"cmd": "python3 - <<'PY'\nfrom page_helpers import *\nPY\ncat *"}, 2},
 		{"quoted_search_pattern", "exec_command", map[string]any{"cmd": `rg '⿰(豕|豸).*(兔|免)|⿰.*兔' /tmp/public-ids.txt`}, 0},

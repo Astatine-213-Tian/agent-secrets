@@ -28,7 +28,7 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 				if sub, ok := n.(*syntax.CmdSubst); ok {
 					syntax.Walk(sub, func(child syntax.Node) bool {
 						if w, ok := child.(*syntax.Word); ok {
-							if path, glob, literal := literalWord(w.Parts, false); literal && (g.inspectPath(path, true) || glob && g.protected(path)) {
+							if path, glob, literal := literalWord(w.Parts, false); literal && (g.inspectPath(path, codeWord) || glob && g.protected(path)) {
 								blocked = true
 							}
 						}
@@ -43,7 +43,7 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 			value = strings.Trim(value, "\"'")
 			ok = true
 		}
-		if ok && (g.inspectPath(value, true) || wildcard && g.protected(value)) {
+		if ok && (g.inspectPath(value, codeWord) || wildcard && g.protected(value)) {
 			blocked = true
 		}
 		// File-bearing flags and upload operands are still paths after their
@@ -52,7 +52,7 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 		if _, v, found := strings.Cut(path, "="); found {
 			path = strings.TrimPrefix(v, "@")
 		}
-		if path != value && g.inspectPath(path, true) {
+		if path != value && g.inspectPath(path, codeWord) {
 			blocked = true
 		}
 		// zsh appends qualifiers to the glob, e.g. .*(.) or *(D). Bash
