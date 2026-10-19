@@ -91,20 +91,23 @@ and arbitrary shell control flow are outside reliable context tracking.
 
 ### Environment and inspection commands
 
-Environment checks apply to executed shell/script arguments, not repository
-file contents or edit text. Credential shell expansions use the name grammar
-below. `$API_KEY` and `${MY_ACCESS_TOKEN}` are denied; `$MAX_TOKENS` and
-`$TOKENIZERS_PARALLELISM` do not match.
+Using a credential at runtime is allowed: `curl -H "Authorization: Bearer
+$GITHUB_TOKEN" …`, `OPENAI_API_KEY=$OPENAI_API_KEY app`, `test -n "$NPM_TOKEN"`,
+and script lookups such as `os.getenv("OPENAI_API_KEY")` are not checked.
+Environment checks deny only direct printing and dumps, in executed
+shell/script arguments, never in repository file contents or edit text.
 
-`printenv` and recognized Python/JavaScript/Go scalar environment lookups use
-that same credential-name grammar. `printenv APP_MODE` is allowed;
-`printenv API_KEY` is denied. There is no permitted-variable list. Computed
-scalar lookups are not rejected solely because the name is unknown; their
-runtime values cannot be classified by this argument-only hook.
+Direct printing uses the credential-name grammar below. `echo`/`printf` of
+`$API_KEY` or `${MY_ACCESS_TOKEN}`, `printenv API_KEY`, and a Python/JavaScript
+`print`/`console.log` whose argument is a credential lookup are denied.
+`$MAX_TOKENS` and `printenv APP_MODE` do not match. Set and length tests such
+as `${TOKEN:+set}` and `${#TOKEN}` print no value and are allowed. There is no
+permitted-variable list.
 
-Dumping forms include bare `env`/`printenv`, exported-variable listing, shell
-tracing, `ps e`/`ps auxe`, and macOS `ps -E`. Ordinary `ps -e` and explicit
-process columns such as `ps -axo pid,etime,command` are allowed.
+Dumping forms include bare `env`/`printenv`/`set`, exported-variable listing,
+printing the whole Python/JavaScript environment, `ps e`/`ps auxe`, and macOS
+`ps -E`. Shell tracing (`set -x`, `bash -x`) is allowed. Ordinary `ps -e` and
+explicit process columns such as `ps -axo pid,etime,command` are allowed.
 
 `gh auth token`, Keychain password output (`-w` or `-g` on
 `find-generic-password`/`find-internet-password`), full `docker inspect`, and

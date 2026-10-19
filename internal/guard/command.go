@@ -85,12 +85,6 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 					}
 				}
 			}
-		case *syntax.ParamExp:
-			// These expansions belong to the outer shell, including unquoted
-			// heredocs. Inner quote characters cannot make them literal.
-			if n.Param != nil && policy.SecretName(n.Param.Value) {
-				blocked = true
-			}
 		case *syntax.Subshell:
 			blocked = g.inspectCode(code[n.Lparen.Offset()+1:n.Rparen.Offset()], depth+1)
 			return false
@@ -159,7 +153,7 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 			}
 			name, _, _ := literalWord(args[0].Parts, false)
 			name = filepath.Base(name)
-			if environmentCommand(name, args[1:]) || credentialInspection(name, args[1:]) {
+			if environmentCommand(name, args[1:]) || credentialInspection(name, args[1:]) || printsSecret(name, args[1:]) {
 				blocked = true
 				return false
 			}
@@ -363,6 +357,32 @@ func wrapperValueOption(name, flag string) bool {
 
 func isShell(name string) bool {
 	return name == "sh" || name == "bash" || name == "zsh" || name == "dash" || name == "ksh"
+}
+
+// printsSecret recognizes echo/printf writing a credential variable's value.
+// Passing a credential to another program is ordinary runtime use, and
+// set/length tests such as ${TOKEN:+set} and ${#TOKEN} print no value.
+// Command substitutions are separate code and are checked on their own.
+func printsSecret(name string, args []*syntax.Word) bool {
+	if name != "echo" && name != "printf" {
+		return false
+	}
+	found := false
+	for _, w := range args {
+		syntax.Walk(w, func(node syntax.Node) bool {
+			switch n := node.(type) {
+			case *syntax.CmdSubst, *syntax.ProcSubst:
+				return false
+			case *syntax.ParamExp:
+				alternate := n.Exp != nil && (n.Exp.Op == syntax.AlternateUnset || n.Exp.Op == syntax.AlternateUnsetOrNull)
+				if n.Param != nil && !n.Length && !alternate && policy.SecretName(n.Param.Value) {
+					found = true
+				}
+			}
+			return !found
+		})
+	}
+	return found
 }
 
 // -e selects processes in POSIX ps. BSD's bare e and macOS's -E display

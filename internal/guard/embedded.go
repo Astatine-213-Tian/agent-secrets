@@ -10,63 +10,25 @@ import (
 
 var quotedCode = regexp.MustCompile(`(?s)"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'` + "|`(?:\\\\.|[^`\\\\])*`")
 
-var envLookup = regexp.MustCompile(`(?:os\.(?:getenv|Getenv|LookupEnv)|getenv)\s*\(\s*["']([A-Za-z_][A-Za-z_0-9]*)["']|(?:os\.environ|process\.env)\s*\[\s*["']([A-Za-z_][A-Za-z_0-9]*)["']\s*\]|process\.env\.([A-Za-z_][A-Za-z_0-9]*)|os\.environ\.get\s*\(\s*["']([A-Za-z_][A-Za-z_0-9]*)["']`)
-var environmentCollection = regexp.MustCompile(`\bos\.environ\b|\bprocess\.env\b|\bos\.Environ\s*\(`)
+// A print call whose argument is a credential lookup or the whole environment.
+var printedEnvironment = regexp.MustCompile(`\b(?:print|console\.(?:log|info|warn|error))\s*\(\s*(?:(?:os\.getenv|os\.environ\.get)\s*\(\s*["']([A-Za-z_]\w*)["']|os\.environ\s*\[\s*["']([A-Za-z_]\w*)["']\s*\]|process\.env\.([A-Za-z_]\w*)|process\.env\s*\[\s*["']([A-Za-z_]\w*)["']\s*\]|(?:dict\s*\(\s*|JSON\.stringify\s*\(\s*)?(?:os\.environ|process\.env)\s*\))`)
+
 var executableLiteral = regexp.MustCompile(`(?s)(?:\b(?:cmd|command|script|code)\s*:\s*|(?:os\.system|execSync|exec|eval|subprocess\.(?:run|call|check_output|Popen))\s*\(\s*\[?\s*)$`)
 var fileLiteral = regexp.MustCompile(`(?s)(?:\b(?:open|Path|readFile|readFileSync|ReadFile|writeFile|writeFileSync)\s*\(\s*|\b(?:path|file_path|filename)\s*:\s*)$`)
 
 // Source heuristics inspect executed scripts, not file contents or edit text.
-// Only explicit environment access and recognizable file/execution APIs are
-// interpreted. Arbitrary program data does not become a path or command.
+// Only recognizable file and execution APIs are interpreted. Environment
+// lookups are ordinary runtime configuration; only printing a credential
+// value or the whole environment directly is denied.
 func (g checker) scriptBlocked(code string, depth int) bool {
 	if depth > 32 {
 		return true
 	}
-	view := []byte(code)
-	quotes := quotedCode.FindAllStringIndex(code, -1)
-	mask := func(a, b int) {
-		for i := a; i < b; i++ {
-			view[i] = ' '
-		}
-	}
-	for _, span := range envLookup.FindAllStringIndex(code, -1) {
-		inside := false
-		for _, q := range quotes {
-			if span[0] >= q[0] && span[0] < q[1] && code[q[0]] != '`' {
-				inside = true
-				break
-			}
-		}
-		if inside {
-			continue
-		}
-		s := code[span[0]:span[1]]
-		m := envLookup.FindStringSubmatch(s)
-		name := ""
-		for _, v := range m[1:] {
-			if v != "" {
-				name = v
-			}
-		}
-		if policy.SecretName(name) {
+	for _, m := range printedEnvironment.FindAllStringSubmatch(code, -1) {
+		name := m[1] + m[2] + m[3] + m[4]
+		if name == "" || policy.SecretName(name) {
 			return true
 		}
-		mask(span[0], span[1])
-	}
-	for _, q := range quotes {
-		if code[q[0]] != '`' || !strings.Contains(code[q[0]:q[1]], "${") {
-			mask(q[0], q[1])
-		}
-	}
-	for _, span := range environmentCollection.FindAllIndex(view, -1) {
-		tail := strings.TrimSpace(string(view[span[1]:]))
-		if strings.HasPrefix(tail, "[") {
-			continue
-		} // computed scalar lookup
-		if strings.HasPrefix(tail, ".") && !strings.HasPrefix(tail, ".items(") && !strings.HasPrefix(tail, ".values(") && !strings.HasPrefix(tail, ".copy(") {
-			continue
-		}
-		return true
 	}
 	return g.embeddedBlocked(code, depth)
 }

@@ -125,20 +125,9 @@ func environmentCommand(name string, args []*syntax.Word) bool {
 	case "env":
 		return true // unwrapped commands are checked under their own name
 	case "set":
-		if len(words) == 0 {
-			return true
-		}
-		for i, w := range words {
-			if w == "--" {
-				break
-			}
-			if strings.HasPrefix(w, "-") && strings.Contains(w, "x") {
-				return true
-			}
-			if w == "-o" && i+1 < len(words) && words[i+1] == "xtrace" {
-				return true
-			}
-		}
+		// Bare set lists every variable. Tracing (-x) is ordinary script
+		// debugging, as with bash -x, and is not a dump.
+		return len(words) == 0
 	case "export", "declare", "typeset":
 		if len(words) == 0 {
 			return true

@@ -74,7 +74,7 @@ func TestRequests(t *testing.T) {
 }
 
 func TestEnvironmentCommands(t *testing.T) {
-	for _, command := range []string{"env", "printenv", "/usr/bin/printenv", "export -p", "set -x; ./app", `echo "$NEW_API_KEY"`, `echo "${OTHER_TOKEN}"`, `python -c "print(os.environ)"`, `node -e "console.log(process.env)"`, "gh auth token", "docker inspect app", "docker compose config", "security find-generic-password -w -s service", "sudo printenv"} {
+	for _, command := range []string{"env", "printenv", "/usr/bin/printenv", "export -p", "set", `echo "$NEW_API_KEY"`, `echo "${OTHER_TOKEN}"`, `python -c "print(os.environ)"`, `node -e "console.log(process.env)"`, "gh auth token", "docker inspect app", "docker compose config", "security find-generic-password -w -s service", "sudo printenv"} {
 		t.Run(command, func(t *testing.T) {
 			check(t, "Bash", map[string]any{"command": command}, "/home/tester", "/workspace", 2)
 		})

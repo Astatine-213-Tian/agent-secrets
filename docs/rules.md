@@ -23,7 +23,8 @@ Filename checks apply to a [fixed list of common file commands](rule-reference.m
 Other commands can still trigger separate checks for secret access.
 
 The hook checks commands inside `$()` and `sh -c`.
-It also checks shell redirections, secret variable access, and later commands.
+It also checks shell redirections, printed secret variables, and later commands.
+Using a secret variable, as in `curl -H "Authorization: Bearer $GITHUB_TOKEN"`, is allowed.
 For example, `uv run --env-file .env app.py; cat .env` is blocked.
 
 Direct file tools, such as `Read`, cannot read protected files.

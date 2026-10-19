@@ -45,7 +45,7 @@ func TestApplicationArgumentsAndCommonFileCommands(t *testing.T) {
 		{`my-app <(cat .env)`, 2},
 		{`my-app < .env`, 2},
 		{`my-app > .env`, 2},
-		{`my-app "$EXAMPLE_API_KEY"`, 2},
+		{`my-app "$EXAMPLE_API_KEY"`, 0},
 		{`my-app .env; printenv`, 2},
 		{`sh -c 'cat .env'`, 2},
 		{`python -c 'print(open(".env").read())'`, 2},

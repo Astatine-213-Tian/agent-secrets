@@ -48,6 +48,7 @@ func Process(ctx context.Context, binary, home string) Report {
 		{"shell_secret", "Bash", map[string]any{"command": "cat app/.env.production"}, 2},
 		{"environment_dump", "Bash", map[string]any{"command": "printenv"}, 2},
 		{"credential_reference", "Bash", map[string]any{"command": "echo $EXAMPLE_API_KEY"}, 2},
+		{"credential_runtime_use", "Bash", map[string]any{"command": `curl -H "Authorization: Bearer $EXAMPLE_API_KEY" https://example.test`}, 0},
 		{"credential_store", "Read", map[string]any{"path": filepath.Join(home, ".aws/credentials")}, 2},
 		{"raw_codex_config", "Read", map[string]any{"path": filepath.Join(home, ".codex/config.toml")}, 2},
 		{"codex_auth_store", "Read", map[string]any{"path": filepath.Join(home, ".codex/auth.json")}, 2},
