@@ -21,10 +21,11 @@ Paths are case-sensitive. `*` matches within a component; `**` spans directories
 
 | Location | Protected resources |
 | --- | --- |
-| Anywhere | `.env`, `.env.*`, `.npmrc`, `private-key.pem`, `private.key`, `id_rsa`, `id_ed25519`, `id_ecdsa` |
+| Anywhere | `.env`, `.env.*`, `.envrc`, `.dev.vars`, `.npmrc`, `private-key.pem`, `private.key`, `*.p12`, `*.pfx`, `id_rsa`, `id_dsa`, `id_ed25519`, `id_ecdsa` |
 | Browser sessions | `**/browser-profiles/**/state.json`, `**/browser-profiles/**/.state.*.tmp` |
 | SSH | `~/.ssh/id_*` |
-| Provider/package credentials | `~/.aws/credentials`, `~/.config/gh/hosts.yml`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`, `~/.docker/config.json` |
+| Provider/package credentials | `~/.aws/credentials`, `~/.config/gh/hosts.yml`, `~/.git-credentials`, `~/.kube/config`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`, `~/.docker/config.json` |
+| Google Cloud | `~/.config/gcloud/application_default_credentials.json`, `credentials.db`, `access_tokens.db`, and `legacy_credentials/` in that directory |
 | Agent settings/credentials | `~/.codex/config.toml`, `~/.codex/auth.json`, `~/.claude/settings.json`, `~/.claude.json`, `~/.claude/.credentials.json` |
 | Backups | `~/.local/share/agent-secrets/backups` and everything beneath it |
 
@@ -52,9 +53,11 @@ directory. Recognized computed location changes are rejected.
 | --- | --- |
 | `ls`, `stat`, existence tests, ordinary `find` listing | Allow: names and metadata do not disclose file values. |
 | Literal output, messages, edit replacement text, search patterns, prose tool arguments | Literal mentions of `.env` are not reads. |
-| Recognized read, content-search, upload, copy, rename, or patch of a protected file | Deny raw access. Supported config reads can be rewritten. |
+| Recognized read, content-search, upload, copy, rename, or patch of a protected file | Deny raw access. Supported config reads can be rewritten. `git show`/`git cat-file` of `REV:PATH` is a read. |
 | Recognized copy/rename/export of a conventional credential directory as source | Deny, including its containing home directory. Copying an ordinary file into the home directory is allowed. |
-| Recognized write/edit of a protected file | Deny; tools can expose previous contents or diffs. No blanket write-only exemption. |
+| Shell writes to a protected file: output redirects (`>`, `>>`), the `cp`/`mv` destination, `tee` outputs | Allow: writing discloses nothing. Sources and input redirects remain screened. |
+| Write tool creating a new file | Allow. An existing file or link keeps the normal rules. |
+| Edit/patch of a protected file | Deny; these tools can expose previous contents or diffs. |
 | `find` actions | Inspect explicit nested commands and protected operands. Common bulk readers such as `-exec cat {} +` are denied; `-exec basename {} \;` is allowed. |
 | Environment, process-environment, or credential-store dumps | Deny. |
 | Other application commands with credential-file arguments | Allow unless a separate recognized operation is denied. A protected filename alone is not a reason to block. |
@@ -65,8 +68,8 @@ argument is screened as a file name only when it is a single word without
 whitespace; queries, titles, and page text are prose.
 
 Shell operand checks apply to this finite set of common file-handling commands:
-`cat`, `head`, `tail`, `less`, `more`, `sed`, `awk`, `cut`, `paste`, `sort`,
-`uniq`, `diff`, `rg`, `grep`, `egrep`, `fgrep`, `jq`, `yq`, `strings`, `od`,
+`cat`, `bat`, `nl`, `tac`, `xargs`, `head`, `tail`, `less`, `more`, `sed`, `awk`,
+`cut`, `paste`, `sort`, `uniq`, `diff`, `rg`, `grep`, `egrep`, `fgrep`, `jq`, `yq`, `strings`, `od`,
 `xxd`, `hexdump`, `base64`, `cp`, `mv`, `rsync`, `scp`, `sftp`, `tar`, `zip`,
 `dd`, `tee`, `curl`, `wget`, and `find`. Metadata and search-pattern roles
 still apply. Recognized wrappers (`command`, `exec`, `sudo`, `env`) use the
@@ -114,7 +117,9 @@ printing the whole Python/JavaScript environment, `ps e`/`ps auxe`, and macOS
 `ps -E`. Shell tracing (`set -x`, `bash -x`) is allowed. Ordinary `ps -e` and
 explicit process columns such as `ps -axo pid,etime,command` are allowed.
 
-`gh auth token`, Keychain password output (`-w` or `-g` on
+`gh auth token`, `aws configure export-credentials`, `aws configure get` of a
+credential name, `gcloud auth print-access-token`/`print-identity-token`,
+`op read`, `op item get --reveal`, Keychain password output (`-w` or `-g` on
 `find-generic-password`/`find-internet-password`), full `docker inspect`, and
 full `docker compose config` are denied. Keychain metadata lookup is allowed.
 Compose selectors `--services`, `--images`, `--volumes`, `--profiles`,

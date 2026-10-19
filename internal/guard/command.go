@@ -168,6 +168,10 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 					g.cwd = filepath.Clean(path)
 				}
 			}
+			if name == "git" && op.gitObjectRead(args[1:]) {
+				blocked = true
+				return false
+			}
 			if name == "ps" && processEnvironment(args[1:]) {
 				blocked = true
 				return false
@@ -211,6 +215,9 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 				if transferSource(name, i, len(n.Args)) && literal && op.protectedDirectory(value) {
 					blocked = true
 				}
+				if writeOnlyOperand(name, i, len(n.Args), value) {
+					continue
+				}
 				inspectWord(op, word)
 			}
 		case *syntax.Stmt:
@@ -240,7 +247,9 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 				}
 			}
 		case *syntax.Redirect:
-			if n.Hdoc == nil {
+			// Writing or appending to a file discloses nothing; input
+			// redirects and here-strings are still screened.
+			if n.Hdoc == nil && !outputRedirect(n.Op) {
 				inspectWord(g, n.Word)
 			}
 		}
@@ -357,6 +366,29 @@ func wrapperValueOption(name, flag string) bool {
 
 func isShell(name string) bool {
 	return name == "sh" || name == "bash" || name == "zsh" || name == "dash" || name == "ksh"
+}
+
+func outputRedirect(op syntax.RedirOperator) bool {
+	switch op {
+	case syntax.RdrOut, syntax.AppOut, syntax.RdrClob, syntax.AppClob, syntax.RdrAll, syntax.RdrAllClob, syntax.AppAll, syntax.AppAllClob:
+		return true
+	}
+	return false
+}
+
+// writeOnlyOperand is a copy/move destination or a tee output. Writing a
+// protected file discloses nothing; sources remain screened.
+func writeOnlyOperand(name string, index, total int, value string) bool {
+	if strings.HasPrefix(value, "-") {
+		return false
+	}
+	switch name {
+	case "cp", "mv":
+		return index == total-1
+	case "tee":
+		return true
+	}
+	return false
 }
 
 // printsSecret recognizes echo/printf writing a credential variable's value.

@@ -130,7 +130,7 @@ func TestNativeSearchKeepsExplicitLeakChecks(t *testing.T) {
 		"rg --max-count 1 needle .env", "rg --hidden needle .; cat .env",
 		"rg -f .env .", "rg --file=.env .", "rg needle . < .env",
 		"rg -f~/.codex/auth.json .", "rg --ignore-file ~/.aws/credentials needle .",
-		"rg --hidden needle . > .env", "rg --pre 'cat .env' needle .",
+		"rg --pre 'cat .env' needle .",
 		"rg needle .; printenv API_KEY",
 		"rg --files --sort path -f .env",
 		"rg -e --files .env",

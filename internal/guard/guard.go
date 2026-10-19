@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -77,6 +78,11 @@ func (g checker) inspect(v any, key string) bool {
 		}
 		switch key {
 		case "path", "paths", "file_path", "filepath", "filename", "file", "uri", "url", "resource_uri":
+			// Creating a file discloses nothing. An existing file, including a
+			// symlink, keeps the normal rules since its contents can be shown.
+			if g.tool == "write" && key == "file_path" && g.missing(value) {
+				return false
+			}
 			return g.protected(value)
 		case "command", "cmd", "code", "expression", "script", "chars", "input", "":
 			return g.codeBlocked(value)
@@ -112,6 +118,17 @@ const (
 	// the caller.
 	codeWord
 )
+
+func (g checker) missing(value string) bool {
+	if strings.HasPrefix(value, "~/") {
+		value = filepath.Join(g.home, value[2:])
+	}
+	if !filepath.IsAbs(value) {
+		value = filepath.Join(g.cwd, value)
+	}
+	_, err := os.Lstat(value)
+	return errors.Is(err, os.ErrNotExist)
+}
 
 func (g checker) protected(value string) bool {
 	return g.inspectPath(value, explicitPath)

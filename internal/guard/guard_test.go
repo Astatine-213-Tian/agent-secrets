@@ -132,6 +132,23 @@ func TestLongMetadataValues(t *testing.T) {
 	}
 }
 
+func TestWriteNewProtectedFile(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(cwd, ".env"), []byte("SYNTHETIC=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(".env", filepath.Join(cwd, "config.txt")); err != nil {
+		t.Fatal(err)
+	}
+	check(t, "Write", map[string]any{"file_path": ".env.local", "content": "A=1\n"}, home, cwd, 0)
+	check(t, "Write", map[string]any{"file_path": filepath.Join(cwd, "new/.env"), "content": "A=1\n"}, home, cwd, 0)
+	// Existing files and links keep the normal rules, as do other file tools.
+	check(t, "Write", map[string]any{"file_path": ".env", "content": "A=1\n"}, home, cwd, 2)
+	check(t, "Write", map[string]any{"file_path": "config.txt", "content": "A=1\n"}, home, cwd, 2)
+	check(t, "Edit", map[string]any{"file_path": ".env.local", "old_string": "A", "new_string": "B"}, home, cwd, 2)
+	check(t, "Read", map[string]any{"file_path": ".env.local"}, home, cwd, 2)
+}
+
 func TestProseArguments(t *testing.T) {
 	home, cwd := t.TempDir(), t.TempDir()
 	for _, tt := range []struct {

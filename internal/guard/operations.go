@@ -29,7 +29,7 @@ func literalArgs(args []*syntax.Word) ([]string, bool) {
 // checks, including when the outer command is not recognized here.
 func fileCommand(name string) bool {
 	switch name {
-	case "cat", "head", "tail", "less", "more", "sed", "awk", "cut", "paste", "sort", "uniq", "diff",
+	case "cat", "bat", "nl", "tac", "xargs", "head", "tail", "less", "more", "sed", "awk", "cut", "paste", "sort", "uniq", "diff",
 		"rg", "grep", "egrep", "fgrep", "jq", "yq", "strings", "od", "xxd", "hexdump", "base64",
 		"cp", "mv", "rsync", "scp", "sftp", "tar", "zip", "dd", "tee", "curl", "wget", "find":
 		return true
@@ -160,6 +160,25 @@ func credentialInspection(name string, args []*syntax.Word) bool {
 	if name == "gh" {
 		return len(words) >= 2 && words[0] == "auth" && words[1] == "token"
 	}
+	if name == "aws" && len(words) >= 2 && words[0] == "configure" {
+		if words[1] == "export-credentials" {
+			return true
+		}
+		if words[1] == "get" {
+			for _, w := range words[2:] {
+				if policy.SecretName(w) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if name == "gcloud" {
+		return strings.Contains(joined, " auth ") && (strings.Contains(joined, " print-access-token ") || strings.Contains(joined, " print-identity-token "))
+	}
+	if name == "op" {
+		return (len(words) >= 1 && words[0] == "read") || (strings.Contains(joined, " item get ") && strings.Contains(joined, " --reveal "))
+	}
 	compose := name == "compose" || name == "docker" && strings.Contains(joined, " compose ")
 	if compose && strings.Contains(joined, " config ") {
 		for _, w := range words {
@@ -206,6 +225,41 @@ func credentialInspection(name string, args []*syntax.Word) bool {
 		}
 	}
 	return !formatted // Default inspection includes the whole environment.
+}
+
+// gitObjectRead recognizes git show/cat-file of REV:PATH, which prints a
+// committed file's contents. Each suffix after a colon is screened, which
+// also covers index forms such as :0:PATH.
+func (g checker) gitObjectRead(args []*syntax.Word) bool {
+	words, _ := literalArgs(args)
+	sub := -1
+	for i := 0; i < len(words); i++ {
+		switch w := words[i]; {
+		case w == "-C" || w == "-c":
+			i++
+		case strings.HasPrefix(w, "-"):
+		default:
+			sub = i
+		}
+		if sub >= 0 {
+			break
+		}
+	}
+	if sub < 0 || words[sub] != "show" && words[sub] != "cat-file" {
+		return false
+	}
+	for _, w := range words[sub+1:] {
+		if strings.HasPrefix(w, "-") {
+			continue
+		}
+		for rest := w; strings.Contains(rest, ":"); {
+			rest = rest[strings.IndexByte(rest, ':')+1:]
+			if rest != "" && g.inspectPath(rest, codeWord) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func scriptCommand(name string) bool {

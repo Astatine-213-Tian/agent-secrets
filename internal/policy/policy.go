@@ -7,9 +7,9 @@ import (
 )
 
 func DeniedPaths(home string) []string {
-	paths := []string{"/**/.env", "/**/.env.*", "/**/private-key.pem", "/**/private.key", "/**/id_rsa", "/**/id_ed25519", "/**/id_ecdsa", "/**/browser-profiles/**/state.json", "/**/browser-profiles/**/.state.*.tmp"}
+	paths := []string{"/**/.env", "/**/.env.*", "/**/private-key.pem", "/**/private.key", "/**/id_rsa", "/**/id_dsa", "/**/id_ed25519", "/**/id_ecdsa", "/**/*.p12", "/**/*.pfx", "/**/.envrc", "/**/.dev.vars", "/**/browser-profiles/**/state.json", "/**/browser-profiles/**/.state.*.tmp"}
 	paths = append(paths, "/**/.npmrc")
-	for _, p := range []string{".aws/credentials", ".ssh/id_*", ".config/gh/hosts.yml", ".netrc", ".npmrc", ".pypirc", ".docker/config.json", ".codex/auth.json", ".codex/config.toml", ".claude/settings.json", ".claude.json", ".claude/.credentials.json", ".local/share/agent-secrets/backups"} {
+	for _, p := range []string{".aws/credentials", ".ssh/id_*", ".config/gh/hosts.yml", ".git-credentials", ".kube/config", ".config/gcloud/application_default_credentials.json", ".config/gcloud/credentials.db", ".config/gcloud/access_tokens.db", ".config/gcloud/legacy_credentials", ".netrc", ".npmrc", ".pypirc", ".docker/config.json", ".codex/auth.json", ".codex/config.toml", ".claude/settings.json", ".claude.json", ".claude/.credentials.json", ".local/share/agent-secrets/backups"} {
 		paths = append(paths, filepath.Join(home, p))
 	}
 	return paths

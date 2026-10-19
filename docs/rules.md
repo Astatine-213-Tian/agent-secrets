@@ -18,6 +18,7 @@ It also hides detected secret values when it shows supported configuration files
 | `grep TOKEN .env` | Block | It searches protected file contents. |
 | `cp .env public.txt` | Block | It copies protected file contents. |
 | `printenv` | Block | It can print secret environment values. |
+| `echo "FOO=1" >> .env` | Allow | Writing a file does not reveal its contents. |
 
 Filename checks apply to a [fixed list of common file commands](rule-reference.md#operation-checks).
 Other commands can still trigger separate checks for secret access.
