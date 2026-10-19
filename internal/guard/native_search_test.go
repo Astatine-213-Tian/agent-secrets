@@ -89,6 +89,59 @@ func TestNativeSearch(t *testing.T) {
 	}
 }
 
+func TestNativeRecursiveGrep(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(home, "project")
+	for name, content := range map[string]string{
+		"README.md": "needle public\n", ".env.example": "needle example\n", ".env.schema.json": "needle schema\n",
+		".env": "needle DO_NOT_ECHO\n", "nested/.env.local": "needle DO_NOT_ECHO\n", ".env.exampl": "needle DO_NOT_ECHO\n",
+		".envrc": "needle DO_NOT_ECHO\n", "certs/client.p12": "needle DO_NOT_ECHO\n", "nested/.npmrc": "needle DO_NOT_ECHO\n",
+		"browser-profiles/site/state.json": "needle DO_NOT_ECHO\n",
+	} {
+		path := filepath.Join(project, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, command := range []string{"grep -rn needle .", "grep -R needle .", "grep -rl needle . | sort", "egrep -r -e needle .", "grep --recursive needle", "cd nested && grep -r needle .."} {
+		t.Run(command, func(t *testing.T) {
+			updated := rewrittenSearch(t, command, home, project)
+			cmd := exec.Command("/bin/sh", "-c", updated)
+			cmd.Dir = project
+			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home}
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("native grep failed: %v: %s", err, out)
+			}
+			if strings.Contains(string(out), "DO_NOT_ECHO") || strings.Contains(string(out), ".env.local") {
+				t.Fatalf("credential fixture leaked: %s", out)
+			}
+			if !strings.Contains(string(out), "README.md") || !strings.Contains(string(out), ".env.example") {
+				t.Fatalf("missing ordinary results: %s", out)
+			}
+		})
+	}
+	// Base-name exclusions cannot express home credential stores.
+	for _, tt := range []struct {
+		command, cwd string
+		want         int
+	}{
+		{"grep -r needle ~", project, 2}, {"grep -rn needle " + filepath.Join(home, ".aws"), project, 2},
+		{"cd ~ && grep -r needle", project, 2}, {"cd && grep -r needle .", project, 2}, {"grep -r needle", home, 2}, {"rgrep needle ~", project, 2},
+		{"grep -rn needle nested", project, 0}, {"grep -r needle", project, 0}, {"grep -n needle README.md", project, 0},
+	} {
+		check(t, "exec_command", map[string]any{"cmd": tt.command}, home, tt.cwd, tt.want)
+	}
+	input, _ := json.Marshal(map[string]any{"tool_name": "exec_command", "cwd": project, "tool_input": map[string]any{"cmd": "grep -n needle README.md"}})
+	var out, stderr bytes.Buffer
+	if guard.Hook(bytes.NewReader(input), &out, &stderr, home, project, "/tmp/binary") != 0 || out.Len() != 0 {
+		t.Fatal("non-recursive grep rewritten")
+	}
+}
+
 func TestBookflowDiagnosticAndNativeOptions(t *testing.T) {
 	home := t.TempDir()
 	for _, command := range []string{

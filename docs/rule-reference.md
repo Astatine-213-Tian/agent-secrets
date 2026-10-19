@@ -167,9 +167,13 @@ supported location overrides; they do not depend on scanning file contents.
 This is native filename filtering, not controlled execution of every file read.
 Symlink following, custom preprocessors, dynamically changed directories or
 arguments, and searches hidden inside scripts can exceed these heuristics.
-`grep`, `egrep`, and `fgrep` receive explicit argument checks without automatic
-recursive exclusions. `guard` alone checks arguments but cannot add exclusions;
-use the installed `hook` for native ripgrep rewriting. There is no private search
+`grep`, `egrep`, and `fgrep` receive explicit argument checks. A recursive grep
+(`-r`, `-R`, `--recursive`, `-d recurse`, `rgrep`) gets `--exclude` and
+`--exclude-dir` options for protected names that apply anywhere, inserted right
+after the command name. Grep matches base names only, so a recursive grep over
+a directory that holds home credential stores, such as `~` or `~/.aws`, is
+denied; use `rg` there. `guard` alone checks arguments but cannot add
+exclusions; use the installed `hook` for native search rewriting. There is no private search
 runner, search byte limit, search deadline, or fixed ripgrep installation path.
 
 ## Redaction rules

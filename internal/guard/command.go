@@ -157,9 +157,16 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 				blocked = true
 				return false
 			}
-			if name == "cd" && len(args) == 2 {
-				if path, ok := g.pathWord(args[1].Parts); ok {
-					if strings.HasPrefix(path, "~/") {
+			if name == "cd" && len(args) <= 2 {
+				// A bare cd, like cd ~, changes to the home directory.
+				path, ok := "~", true
+				if len(args) == 2 {
+					path, ok = g.pathWord(args[1].Parts)
+				}
+				if ok {
+					if path == "~" {
+						path = g.home
+					} else if strings.HasPrefix(path, "~/") {
 						path = filepath.Join(g.home, path[2:])
 					}
 					if !filepath.IsAbs(path) {
@@ -178,6 +185,10 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 			}
 			patterns := searchPatterns(name, args[1:])
 			metadata := metadataCommand(name, args[1:])
+			if grepCommand(name) && recursiveGrep(name, args[1:]) && op.grepsProtectedDirectory(args[1:], patterns) {
+				blocked = true
+				return false
+			}
 			if name == "find" && op.findActionBlocked(args[1:], code, depth) {
 				blocked = true
 				return false
@@ -187,7 +198,7 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 				if patterns[word] && literal && !wildcard {
 					continue
 				}
-				if (name == "rg" || name == "grep" || name == "egrep" || name == "fgrep") && strings.HasPrefix(value, "-f") && len(value) > 2 && op.protected(value[2:]) {
+				if (name == "rg" || grepCommand(name)) && strings.HasPrefix(value, "-f") && len(value) > 2 && op.protected(value[2:]) {
 					blocked = true
 				}
 				// Shell -c operands are code, including their own regex roles.

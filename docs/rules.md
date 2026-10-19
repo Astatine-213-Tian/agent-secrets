@@ -44,7 +44,7 @@ A symbolic link to a protected file also receives protection.
 ## Content searches
 
 The hook checks the file arguments of `rg`, `grep`, `egrep`, and `fgrep`.
-For shell `rg` searches, it also adds rules to skip protected paths.
+For shell `rg` and recursive `grep` searches, it also adds rules to skip protected paths.
 
 | Example | Result |
 | --- | --- |
@@ -53,7 +53,7 @@ For shell `rg` searches, it also adds rules to skip protected paths.
 | `rg -e '.env' README.md` | Allow the filename as a search pattern. |
 | `rg --files` | Allow the file list. |
 
-`grep`, `egrep`, and `fgrep` do not get automatic path exclusions.
+Recursive `grep` cannot skip home credential stores by path, so `grep -r TOKEN ~` is blocked; use `rg`.
 The search tool still controls its options, output, and exit code.
 
 ## Redaction rules

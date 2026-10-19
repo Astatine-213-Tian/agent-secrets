@@ -128,7 +128,7 @@ func readWord(parts []syntax.WordPart, source, home string, quoted bool) (string
 				return "", false
 			}
 			v := p.Value
-			if !quoted && i == 0 && strings.HasPrefix(v, "~/") {
+			if !quoted && i == 0 && (v == "~" || strings.HasPrefix(v, "~/")) {
 				v = home + v[1:]
 			}
 			out.WriteString(v)

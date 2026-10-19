@@ -31,7 +31,7 @@ arguments without an exemption per application. Nested execution, expansions,
 redirections, explicit file APIs, and recognized dumps have independent checks.
 
 The two deliberate rewriting exceptions are a basic config-read bridge and
-native ripgrep exclusions. Reader-option emulation and private search execution
+native search exclusions for ripgrep and recursive grep. Reader-option emulation and private search execution
 are absent. `guard/read.go` owns the config bridge; `guard/search.go` owns the
 search exception; `guard/operations.go` and `guard/find.go` own disclosure checks.
 Both rewrites share tool-input extraction, working-directory resolution, parsed

@@ -30,7 +30,7 @@ func literalArgs(args []*syntax.Word) ([]string, bool) {
 func fileCommand(name string) bool {
 	switch name {
 	case "cat", "bat", "nl", "tac", "xargs", "head", "tail", "less", "more", "sed", "awk", "cut", "paste", "sort", "uniq", "diff",
-		"rg", "grep", "egrep", "fgrep", "jq", "yq", "strings", "od", "xxd", "hexdump", "base64",
+		"rg", "grep", "egrep", "fgrep", "rgrep", "jq", "yq", "strings", "od", "xxd", "hexdump", "base64",
 		"cp", "mv", "rsync", "scp", "sftp", "tar", "zip", "dd", "tee", "curl", "wget", "find":
 		return true
 	}

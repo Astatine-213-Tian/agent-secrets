@@ -47,6 +47,35 @@ func (l Locations) SearchExclusions(cwd string) []string {
 	return out
 }
 
+// GrepExclusions are --exclude/--exclude-dir globs for recursive grep, which
+// matches base names only. Only rules that apply anywhere are expressible;
+// recursion into directories holding home credential stores is denied instead.
+func (l Locations) GrepExclusions() (files, dirs []string) {
+	seen := map[string]bool{}
+	add := func(list *[]string, glob string) {
+		if !seen[glob] {
+			seen[glob] = true
+			*list = append(*list, glob)
+		}
+	}
+	for _, path := range l.Paths() {
+		rest, anywhere := strings.CutPrefix(path, "/**/")
+		if !anywhere {
+			continue
+		}
+		if dir, _, nested := strings.Cut(rest, "/"); nested {
+			add(&dirs, dir)
+		} else if rest == ".env.*" {
+			for _, suffix := range exceptNames([]string{"example", "schema.json"}) {
+				add(&files, ".env."+suffix)
+			}
+		} else {
+			add(&files, rest)
+		}
+	}
+	return files, dirs
+}
+
 // Express * minus exact public filenames using negative-only globs. Positive
 // globs would change rg's native include/ignore behavior for unrelated files.
 func exceptNames(names []string) []string {
