@@ -52,6 +52,10 @@ func hook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string, a
 	if decision.Kind == Allow {
 		return 0
 	}
-	_, _ = io.WriteString(stderr, Reason+"\n")
+	reason := Reason
+	if decision.ConfigView {
+		reason = ConfigReason
+	}
+	_, _ = io.WriteString(stderr, reason+"\n")
 	return 2
 }

@@ -67,6 +67,13 @@ The denial is exactly:
 Blocked by global credential protection: secret files and environment values must not enter agent transcripts.
 ```
 
+When a denied request names a supported configuration file, `hook` (not
+`guard`, which has no config-read bridge) appends one fixed sentence:
+
+```text
+For a redacted view of this configuration file, run cat on it in the shell, alone or piped (cat FILE | head -n 40).
+```
+
 Rewriting requires object-valued `tool_input` and a supported tool/command
 field. If `hook_event_name` is supplied, it must be `PreToolUse` for rewriting.
 Other arguments and JSON number precision are preserved; sibling arguments

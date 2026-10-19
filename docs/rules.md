@@ -64,6 +64,8 @@ Other values remain visible.
 
 This works for supported Codex, Claude, Docker, and npm configuration files.
 It does not provide a readable view of `.env` or login token stores.
+When a file tool or another command is denied on a supported configuration,
+the denial message points to this `cat` view.
 Use a pipe to select part of the result:
 
 ```sh

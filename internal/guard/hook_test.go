@@ -125,8 +125,34 @@ func TestHookRejectsUnsafeReads(t *testing.T) {
 		request, _ := json.Marshal(map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": command}})
 		var out, stderr bytes.Buffer
 		code := guard.Hook(bytes.NewReader(request), &out, &stderr, "/home/tester", "/workspace", "/bin/agent-secrets")
-		if code != 2 || out.Len() != 0 || stderr.String() != guard.Reason+"\n" {
+		if code != 2 || out.Len() != 0 || stderr.String() != guard.Reason+"\n" && stderr.String() != guard.ConfigReason+"\n" {
 			t.Fatalf("unsafe command accepted: %s", command)
+		}
+	}
+}
+
+func TestConfigDenialPointsToRedactedView(t *testing.T) {
+	home := t.TempDir()
+	for _, tt := range []struct {
+		tool   string
+		args   map[string]any
+		reason string
+	}{
+		{"Read", map[string]any{"file_path": "~/.claude/settings.json"}, guard.ConfigReason},
+		{"Read", map[string]any{"file_path": filepath.Join(home, ".codex/config.toml")}, guard.ConfigReason},
+		{"Bash", map[string]any{"command": "head -n 20 ~/.codex/config.toml"}, guard.ConfigReason},
+		{"Read", map[string]any{"file_path": "~/.codex/auth.json"}, guard.Reason},
+		{"Read", map[string]any{"file_path": ".env"}, guard.Reason},
+	} {
+		request, _ := json.Marshal(map[string]any{"tool_name": tt.tool, "tool_input": tt.args, "cwd": home})
+		var out, stderr bytes.Buffer
+		if guard.Hook(bytes.NewReader(request), &out, &stderr, home, home, "/bin/agent-secrets") != 2 || stderr.String() != tt.reason+"\n" {
+			t.Fatalf("%v: wrong denial", tt.args)
+		}
+		// guard has no config-read bridge, so it never suggests one.
+		stderr.Reset()
+		if guard.Check(bytes.NewReader(request), &stderr, home, home) != 2 || stderr.String() != guard.Reason+"\n" {
+			t.Fatalf("%v: guard suggested the bridge", tt.args)
 		}
 	}
 }

@@ -241,6 +241,9 @@ func probe(ctx context.Context, binary string, input []byte, want int) bool {
 	message := ""
 	if want == 2 {
 		message = guard.Reason + "\n"
+		if stderr.String() == guard.ConfigReason+"\n" {
+			message = stderr.String()
+		}
 	}
 	if status != want || stderr.String() != message {
 		return false
