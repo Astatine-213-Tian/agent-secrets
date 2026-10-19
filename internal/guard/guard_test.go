@@ -125,9 +125,30 @@ func TestLongMetadataValues(t *testing.T) {
 		// A long value does not exempt lexical checks, protected locations,
 		// sibling paths, or explicit path arguments.
 		check(t, "AskUserQuestion", map[string]any{"questions": []any{question}, "path": ".env"}, home, cwd, 2)
-		check(t, "mcp__notes__save", map[string]any{"note": prose + " see .env"}, home, cwd, 2)
-		check(t, "mcp__notes__save", map[string]any{"note": filepath.Join(home, ".aws/credentials", prose)}, home, cwd, 2)
+		check(t, "mcp__notes__save", map[string]any{"note": prose + " see .env"}, home, cwd, 0)
+		check(t, "mcp__notes__save", map[string]any{"note": prose, "target": ".env"}, home, cwd, 2)
+		check(t, "mcp__notes__save", map[string]any{"note": filepath.Join(home, ".aws/credentials", strings.Join(strings.Fields(prose), "_"))}, home, cwd, 2)
 		check(t, "Read", map[string]any{"file_path": prose}, home, cwd, 2)
+	}
+}
+
+func TestProseArguments(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	for _, tt := range []struct {
+		tool string
+		args map[string]any
+		want int
+	}{
+		{"WebSearch", map[string]any{"query": "vite .env variables undefined"}, 0},
+		{"mcp__tavily__tavily_search", map[string]any{"query": "nextjs .env.local not loading in production"}, 0},
+		{"mcp__notion__notion-search", map[string]any{"query": "how we manage .env files"}, 0},
+		// A single path-like word in an unrecognized field is still a file name.
+		{"mcp__tool__open", map[string]any{"target": ".env"}, 2},
+		{"mcp__tool__open", map[string]any{"target": "~/.ssh/id_ed25519"}, 2},
+		{"mcp__tool__open", map[string]any{"target": "README.md"}, 0},
+		{"mcp__tool__open", map[string]any{"path": "notes/my .env"}, 2},
+	} {
+		check(t, tt.tool, tt.args, home, cwd, tt.want)
 	}
 }
 
@@ -139,7 +160,7 @@ func TestManyComponentValues(t *testing.T) {
 		page.WriteString(`<video src="https://www.notion.so/signed/abc/clip.mp4?table=block&id=1"></video>` + "\n")
 	}
 	check(t, "mcp__notion__notion-update-page", map[string]any{"page_id": "abc", "command": "replace_content", "new_str": page.String()}, home, cwd, 0)
-	check(t, "mcp__notion__notion-update-page", map[string]any{"page_id": "abc", "command": "replace_content", "new_str": page.String() + "Copy .env first."}, home, cwd, 2)
+	check(t, "mcp__notion__notion-update-page", map[string]any{"page_id": "abc", "command": "replace_content", "new_str": page.String() + "Copy .env first."}, home, cwd, 0)
 	// Component count is not a symlink cycle. Deep paths keep their own rules.
 	deep := strings.Repeat("node_modules/", 70)
 	check(t, "Read", map[string]any{"file_path": filepath.Join(cwd, deep, "index.js")}, home, cwd, 0)

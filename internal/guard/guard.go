@@ -86,6 +86,11 @@ func (g checker) inspect(v any, key string) bool {
 			// Sibling and nested path/command arguments are still inspected.
 			return false
 		default:
+			// Other strings are often prose: search queries, titles, page
+			// text. Only a single path-like word is screened as a file name.
+			if strings.ContainsAny(value, " \t\r\n") {
+				return false
+			}
 			return g.inspectPath(value, metadataValue)
 		}
 	}

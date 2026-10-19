@@ -51,13 +51,18 @@ directory. Recognized computed location changes are rejected.
 | Operation | Rule |
 | --- | --- |
 | `ls`, `stat`, existence tests, ordinary `find` listing | Allow: names and metadata do not disclose file values. |
-| Literal output, messages, edit replacement text, search patterns | Literal mentions of `.env` are not reads. |
+| Literal output, messages, edit replacement text, search patterns, prose tool arguments | Literal mentions of `.env` are not reads. |
 | Recognized read, content-search, upload, copy, rename, or patch of a protected file | Deny raw access. Supported config reads can be rewritten. |
 | Recognized copy/rename/export of a conventional credential directory as source | Deny, including its containing home directory. Copying an ordinary file into the home directory is allowed. |
 | Recognized write/edit of a protected file | Deny; tools can expose previous contents or diffs. No blanket write-only exemption. |
 | `find` actions | Inspect explicit nested commands and protected operands. Common bulk readers such as `-exec cat {} +` are denied; `-exec basename {} \;` is allowed. |
 | Environment, process-environment, or credential-store dumps | Deny. |
 | Other application commands with credential-file arguments | Allow unless a separate recognized operation is denied. A protected filename alone is not a reason to block. |
+
+Tool path arguments (`path`, `paths`, `file_path`, `filepath`, `filename`,
+`file`, `uri`, `url`, `resource_uri`) are always screened. Any other tool
+argument is screened as a file name only when it is a single word without
+whitespace; queries, titles, and page text are prose.
 
 Shell operand checks apply to this finite set of common file-handling commands:
 `cat`, `head`, `tail`, `less`, `more`, `sed`, `awk`, `cut`, `paste`, `sort`,
