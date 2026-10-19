@@ -62,6 +62,7 @@ func Process(ctx context.Context, binary, home string) Report {
 		{"long_code_literal", "exec_command", map[string]any{"cmd": "python3 -c \"text = '" + strings.Repeat("书中文字。", 200) + "'\""}, 0},
 		{"long_code_literal_secret", "exec_command", map[string]any{"cmd": "echo '" + strings.Repeat("text", 1024) + "'\ncat .env"}, 2},
 		{"long_metadata_value", "AskUserQuestion", map[string]any{"questions": []any{map[string]any{"question": strings.Repeat("Which layout? ", 30), "options": []any{map[string]any{"label": "A", "preview": strings.Repeat("| Q: question [v] |\n", 20)}}}}}, 0},
+		{"many_component_value", "mcp__notion__notion-update-page", map[string]any{"page_id": "abc", "command": "replace_content", "new_str": strings.Repeat("[guide](https://example.com/help/reset?lang=en)\n", 40)}, 0},
 		{"long_metadata_value_secret", "AskUserQuestion", map[string]any{"questions": []any{map[string]any{"question": strings.Repeat("Which layout? ", 30) + " see .env"}}}, 2},
 		{"python_wildcard_import", "exec_command", map[string]any{"cmd": "python3 - <<'PY'\nfrom page_helpers import *\nPY"}, 0},
 		{"python_import_shell_wildcard", "exec_command", map[string]any{"cmd": "python3 - <<'PY'\nfrom page_helpers import *\nPY\ncat *"}, 2},

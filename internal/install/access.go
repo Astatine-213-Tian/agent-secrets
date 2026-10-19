@@ -43,14 +43,22 @@ func ResolveLocations(l policy.Locations) (policy.Locations, error) {
 // only. A link to a missing credential file still has a protected target.
 func ResolvePath(p string) (string, error) { return resolvePath(p, 0) }
 
-func resolvePath(p string, depth int) (string, error) {
-	if depth > 64 {
+// pathMax is the largest PATH_MAX of supported systems. Longer names cannot be
+// opened; rejecting them early bounds recursion over their components.
+const pathMax = 4096
+
+// hops counts followed symlinks, not components: deep paths are not cycles.
+func resolvePath(p string, hops int) (string, error) {
+	if hops > 64 {
 		return "", os.ErrInvalid
+	}
+	if len(p) >= pathMax {
+		return "", &os.PathError{Op: "lstat", Path: p, Err: syscall.ENAMETOOLONG}
 	}
 	if p == filepath.Dir(p) {
 		return p, nil
 	}
-	parent, err := resolvePath(filepath.Dir(p), depth+1)
+	parent, err := resolvePath(filepath.Dir(p), hops)
 	if err != nil {
 		return "", err
 	}
@@ -72,7 +80,7 @@ func resolvePath(p string, depth int) (string, error) {
 	if !filepath.IsAbs(target) {
 		target = filepath.Join(parent, target)
 	}
-	return resolvePath(filepath.Clean(target), depth+1)
+	return resolvePath(filepath.Clean(target), hops+1)
 }
 
 // readRegular pins every directory and checks identity before opening a file.

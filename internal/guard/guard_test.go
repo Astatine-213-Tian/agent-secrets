@@ -131,6 +131,22 @@ func TestLongMetadataValues(t *testing.T) {
 	}
 }
 
+func TestManyComponentValues(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	var page strings.Builder
+	for i := 0; i < 30; i++ {
+		page.WriteString("## Q: How do I reset my password?\n**A:** See [the guide](https://example.com/help/reset?lang=en).\n")
+		page.WriteString(`<video src="https://www.notion.so/signed/abc/clip.mp4?table=block&id=1"></video>` + "\n")
+	}
+	check(t, "mcp__notion__notion-update-page", map[string]any{"page_id": "abc", "command": "replace_content", "new_str": page.String()}, home, cwd, 0)
+	check(t, "mcp__notion__notion-update-page", map[string]any{"page_id": "abc", "command": "replace_content", "new_str": page.String() + "Copy .env first."}, home, cwd, 2)
+	// Component count is not a symlink cycle. Deep paths keep their own rules.
+	deep := strings.Repeat("node_modules/", 70)
+	check(t, "Read", map[string]any{"file_path": filepath.Join(cwd, deep, "index.js")}, home, cwd, 0)
+	check(t, "Read", map[string]any{"file_path": filepath.Join(cwd, deep, ".env")}, home, cwd, 2)
+	check(t, "Read", map[string]any{"file_path": strings.Repeat("a/", 3000) + "b"}, home, cwd, 2)
+}
+
 func TestPythonWildcardImports(t *testing.T) {
 	home, cwd := t.TempDir(), t.TempDir()
 	for _, statement := range []string{"from page_helpers import *", "from package.helpers import *", "from .helpers import *", "from .. import *", "  from helpers import * # shared functions"} {
