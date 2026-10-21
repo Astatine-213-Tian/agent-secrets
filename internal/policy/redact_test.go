@@ -196,3 +196,31 @@ func TestLocalDatesAndTimesKeepWallClockValues(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudeSandboxCredentialDeclarationsStayVisible(t *testing.T) {
+	input := `{
+  "sandbox": {"credentials": {
+    "envVars": [{"name": "GITHUB_TOKEN", "mode": "mask", "injectHosts": ["api.github.com"]}],
+    "files": [{"path": "~/.aws/credentials", "mode": "deny"}],
+    "awsPairs": [{"accessKeyIdVar": "MY_KEY_ID", "secretAccessKeyVar": "MY_SECRET_KEY", "sessionTokenVar": "MY_SESSION_TOKEN"}],
+    "sigv4": {"streaming": "passthrough"},
+    "note": "ghp_DONOTECHO0123456789abcdef",
+    "token": "DO_NOT_ECHO"
+  }},
+  "credentials": {"name": "DO_NOT_ECHO"},
+  "other": {"sandbox": {"credentials": {"name": "DO_NOT_ECHO"}}},
+  "hooks": {"Stop": [{"command": "make && say <done>"}]}
+}`
+	out, err := policy.Sanitize("json", []byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(out, []byte("DO_NOT_ECHO")) || bytes.Contains(out, []byte("DONOTECHO")) {
+		t.Fatal("credential survived")
+	}
+	for _, visible := range []string{`"name": "GITHUB_TOKEN"`, `"mode": "mask"`, `"api.github.com"`, `"path": "~/.aws/credentials"`, `"secretAccessKeyVar": "MY_SECRET_KEY"`, `"sessionTokenVar": "MY_SESSION_TOKEN"`, `"streaming": "passthrough"`, `"make && say <done>"`} {
+		if !bytes.Contains(out, []byte(visible)) {
+			t.Fatalf("hid or escaped %s", visible)
+		}
+	}
+}

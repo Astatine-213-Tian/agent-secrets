@@ -226,7 +226,7 @@ protected configs.
 Files must be regular and at most 4 MiB. Config-file symlinks and symlinks below
 user-home config locations are refused. The entire document is parsed before
 output, with a nesting limit of 64. TOML/JSON formatting and comments are not
-preserved; JSON numeric precision is retained. Npm supports line-based
+preserved; JSON numeric precision is retained, and `&`, `<`, and `>` stay literal. Npm supports line-based
 `key=value` entries and drops comment lines. Failures return a fixed error and
 no configuration output. Line numbers refer to the sanitized view. The source
 file is never modified.
@@ -255,6 +255,11 @@ arrays, and every `profiles.<name>` subtree. Context adds these matches:
 - Npm `_auth`, `_authToken`, `_password`, including registry-prefixed entries.
 - `headers`/`http_headers` entries use the header rules below.
 - `query_params` entries use the query rules below.
+
+Claude Code's top-level `sandbox.credentials` block is an exception to the
+container rule: it declares the variables and files to protect by name, path,
+mode, and host, so its members use the ordinary rules instead of being hidden
+as a whole. A `credentials` key anywhere else still hides its subtree.
 
 Only sensitive inline environment entries are hidden. `NODE_ENV`, `LOG_LEVEL`,
 `PATH`, and unmatched values remain visible, subject to recognizable credential
@@ -320,7 +325,8 @@ the replaced or removed value is not fully visible in the sanitized view. Keys
 address object members only, never array elements, so an edit cannot change how
 another value is classified. Symlinked and malformed files are refused. In
 Claude `settings.json`, an edit that removes the agent-secrets hook
-registration or sets `disableAllHooks` is refused; other hooks stay editable.
+registration, sets `disableAllHooks`, or changes `sandbox` as a whole or
+`sandbox.credentials` is refused; other hooks and sandbox settings stay editable.
 Client permissions still govern the command like any other shell command.
 
 The edit follows the installation rules: parse before writing, back up the

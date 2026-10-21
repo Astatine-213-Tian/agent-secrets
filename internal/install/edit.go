@@ -22,7 +22,7 @@ var (
 	ErrEditUsage       = errors.New("Usage: agent-secrets config set FILE KEY JSON_VALUE, or config unset FILE KEY. KEY is dot-separated (env.MCP_TOOL_TIMEOUT) or a JSON array of names; JSON_VALUE is JSON, such as '\"1800000\"' for a string.")
 	ErrEditUnsupported = errors.New("Unsupported file: config set changes Claude Code settings.json and Docker config.json; TOML and npm files are not edited, to keep their comments.")
 	ErrEditCredential  = errors.New("Refused: the setting is or contains a credential; no values were printed.")
-	ErrEditHook        = errors.New("Refused: the edit would disable the agent-secrets hook; no values were printed.")
+	ErrEditProtection  = errors.New("Refused: the edit would weaken credential protection (the agent-secrets hook, disableAllHooks, or sandbox.credentials); no values were printed.")
 	ErrEdit            = errors.New("Cannot safely change configuration; the file may be malformed, missing the key, linked, or changed. No file contents were printed.")
 )
 
@@ -98,11 +98,13 @@ func EditConfig(home, cwd, path string, key []string, value any, remove bool) er
 	if e != nil {
 		return ErrEdit
 	}
-	// An edit must not switch off the protection that allows it.
+	// An edit must not switch off the protection that allows it, or change
+	// which credentials Claude Code's sandbox hides.
 	if path == filepath.Join(home, ".claude/settings.json") {
 		own := claudeCommand(filepath.Join(home, ".local/share/agent-secrets/agent-secrets"))
-		if key[0] == "disableAllHooks" || hasHook(before, own) && !hasHook(after, own) {
-			return ErrEditHook
+		sandbox := key[0] == "sandbox" && (len(key) == 1 || key[1] == "credentials")
+		if key[0] == "disableAllHooks" || sandbox || hasHook(before, own) && !hasHook(after, own) {
+			return ErrEditProtection
 		}
 	}
 	backup := filepath.Join(home, ".local/share/agent-secrets/backups", fmt.Sprintf("%d", time.Now().UnixNano()), filepath.Base(path))

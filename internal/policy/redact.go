@@ -49,11 +49,7 @@ func Sanitize(format string, data []byte) (out []byte, err error) {
 		return nil, ErrDocument
 	}
 	if format == "json" {
-		b, e := json.MarshalIndent(clean, "", "  ")
-		if e != nil {
-			return nil, ErrDocument
-		}
-		return append(b, '\n'), nil
+		return encodeJSON(clean)
 	}
 	var buf bytes.Buffer
 	if toml.NewEncoder(&buf).Encode(clean) != nil {
@@ -75,6 +71,19 @@ func decodeJSON(data []byte) map[string]any {
 		return nil
 	}
 	return document
+}
+
+// encodeJSON indents with two spaces and keeps &, <, and > literal, as they
+// appear in shell commands, instead of escaping them for HTML.
+func encodeJSON(document any) ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if encoder.Encode(document) != nil {
+		return nil, ErrDocument
+	}
+	return buf.Bytes(), nil
 }
 
 func sanitizeValue(value any, path []string, hidden bool) (any, error) {

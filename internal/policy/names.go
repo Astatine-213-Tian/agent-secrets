@@ -68,6 +68,12 @@ func sensitiveField(path []string) bool {
 		return false
 	}
 	n := path[len(path)-1]
+	// Claude Code's sandbox.credentials declares which variables and files to
+	// protect: names, paths, modes, and hosts, never their values. Its members
+	// are checked by the ordinary rules instead of being hidden wholesale.
+	if len(path) == 2 && path[0] == "sandbox" && path[1] == "credentials" {
+		return false
+	}
 	if len(path) >= 2 && (NormalizeName(path[len(path)-2]) == "http_headers" || NormalizeName(path[len(path)-2]) == "headers") {
 		return SensitiveHeader(n)
 	}

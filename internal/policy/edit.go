@@ -1,8 +1,6 @@
 package policy
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"reflect"
 	"unicode/utf8"
@@ -78,12 +76,5 @@ func Edit(data []byte, key []string, value any, remove bool) (out []byte, err er
 	} else {
 		parent[name] = value
 	}
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
-	if encoder.Encode(document) != nil {
-		return nil, ErrDocument
-	}
-	return buf.Bytes(), nil
+	return encodeJSON(document)
 }

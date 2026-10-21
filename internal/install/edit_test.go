@@ -106,8 +106,10 @@ func TestConfigEditKeepsOwnHook(t *testing.T) {
 		{"unset", path, "hooks.PreToolUse"},
 		{"set", path, "hooks.PreToolUse", "[]"},
 		{"set", path, "disableAllHooks", "true"},
+		{"set", path, "sandbox.credentials.envVars", "[]"},
+		{"set", path, "sandbox", "{}"},
 	} {
-		if err := ConfigCommand(home, home, args); err != ErrEditHook {
+		if err := ConfigCommand(home, home, args); err != ErrEditProtection {
 			t.Fatalf("%v: hook removal accepted", args)
 		}
 		if b, err := os.ReadFile(path); err != nil || string(b) != string(installed.Claude) {
