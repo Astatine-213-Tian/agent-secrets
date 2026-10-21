@@ -238,6 +238,7 @@ func FuzzHook(f *testing.F) {
 		`rg '⿰(豕|豸).*(兔|免)' README.md`, `rg -e '.env' README.md`, `grep -T public .env`,
 		`ps -axo pid,etime,command`, `ps "$@" e`, `python3 -c 'import os; os.system("cat .*")'`,
 		`echo "rg '$EXAMPLE_API_KEY' README.md"`, "sh <<SH\nrg '$(env)' README.md\nSH", `cat .*(.)`,
+		"head -n 20 ~/.codex/config.toml",
 	} {
 		f.Add(command)
 	}
@@ -246,7 +247,8 @@ func FuzzHook(f *testing.F) {
 		var out, stderr bytes.Buffer
 		code := guard.Hook(bytes.NewReader(data), &out, &stderr, "/home/tester", "/workspace", "/bin/agent-secrets")
 		if code == 2 {
-			if out.Len() != 0 || stderr.String() != guard.Reason+"\n" {
+			// A denial naming a supported config adds the fixed view hint.
+			if out.Len() != 0 || stderr.String() != guard.Reason+"\n" && stderr.String() != guard.ConfigReason+"\n" {
 				t.Fatal("invalid denial")
 			}
 		} else if code != 0 || stderr.Len() != 0 || (out.Len() > 0 && !json.Valid(out.Bytes())) {
