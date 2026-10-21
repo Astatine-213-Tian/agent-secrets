@@ -83,6 +83,8 @@ func Process(ctx context.Context, binary, home string) Report {
 		{"grep_optional_color_operand", "exec_command", map[string]any{"cmd": `grep --color public .env`}, 2},
 		{"process_dynamic_environment", "exec_command", map[string]any{"cmd": `ps "$@" e`}, 2},
 		{"embedded_shell_glob", "exec_command", map[string]any{"cmd": `python3 -c 'import os; os.system("cat .*")'`}, 2},
+		{"config_set_command", "Bash", map[string]any{"command": `agent-secrets config set ~/.claude/settings.json env.EXAMPLE '"1"'`}, 0},
+		{"claude_settings_edit", "Edit", map[string]any{"file_path": filepath.Join(home, ".claude/settings.json"), "old_string": "a", "new_string": "b"}, 2},
 	}
 	r := Report{Passed: true, Scope: "executable hook and sanitized-reader protocols only; not proof of live client hook activation"}
 	for _, c := range cases {
@@ -93,6 +95,7 @@ func Process(ctx context.Context, binary, home string) Report {
 		r.Checks = append(r.Checks, Check{"malformed_request", probe(ctx, binary, []byte(b), 2)})
 	}
 	r.Checks = append(r.Checks, configViewProbes(ctx, binary)...)
+	r.Checks = append(r.Checks, fileToolProbes(ctx, binary)...)
 	r.Checks = append(r.Checks, searchProbes(ctx, binary)...)
 	r.Checks = append(r.Checks, Check{"claude_rewrite_keeps_permissions", claudeRewrite(ctx, binary)})
 	for _, c := range r.Checks {
@@ -186,6 +189,62 @@ func configViewProbes(ctx context.Context, binary string) []Check {
 	return checks
 }
 
+// fileToolProbes covers the file-tool bridge in an isolated home: a Claude
+// Code Read of settings is pointed at a sanitized view, and config set
+// changes one setting while refusing a credential.
+func fileToolProbes(ctx context.Context, binary string) []Check {
+	checks := []Check{{Name: "claude_read_view"}, {Name: "config_set"}, {Name: "config_set_credential_refused"}, {Name: "file_tool_fixture_cleanup"}}
+	home, err := os.MkdirTemp("", "agent-secrets-file-verify-")
+	if err != nil {
+		return checks
+	}
+	defer func() { checks[len(checks)-1].Passed = os.RemoveAll(home) == nil }()
+	path := filepath.Join(home, ".claude/settings.json")
+	original := `{"env": {"EXAMPLE_API_TOKEN": "DO_NOT_ECHO", "SHELL": "/bin/sh"}}`
+	if os.Mkdir(filepath.Dir(path), 0700) != nil || os.WriteFile(path, []byte(original), 0600) != nil {
+		return checks
+	}
+	run := func(stdin []byte, args ...string) (int, string, string) {
+		c := exec.CommandContext(ctx, binary, args...)
+		c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home}
+		c.Dir, c.Stdin = home, bytes.NewReader(stdin)
+		var stdout, stderr bytes.Buffer
+		c.Stdout, c.Stderr = &stdout, &stderr
+		err := c.Run()
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.ExitCode(), stdout.String(), stderr.String()
+		}
+		if err != nil {
+			return -1, "", ""
+		}
+		return 0, stdout.String(), stderr.String()
+	}
+
+	request, _ := json.Marshal(map[string]any{"tool_name": "Read", "tool_input": map[string]any{"file_path": path}, "cwd": home})
+	code, stdout, stderr := run(request, "hook", "--client", "claude")
+	var response struct {
+		Output map[string]any `json:"hookSpecificOutput"`
+	}
+	if code == 0 && stderr == "" && !strings.Contains(stdout, "DO_NOT_ECHO") && json.Unmarshal([]byte(stdout), &response) == nil {
+		input, _ := response.Output["updatedInput"].(map[string]any)
+		_, decided := response.Output["permissionDecision"]
+		view, err := os.ReadFile(policy.ViewPath(home, path))
+		checks[0].Passed = !decided && input["file_path"] == policy.ViewPath(home, path) && err == nil &&
+			bytes.Contains(view, []byte("/bin/sh")) && !bytes.Contains(view, []byte("DO_NOT_ECHO"))
+	}
+
+	code, stdout, stderr = run(nil, "config", "set", "~/.claude/settings.json", "env.MCP_TOOL_TIMEOUT", `"1800000"`)
+	edited, err := os.ReadFile(path)
+	checks[1].Passed = code == 0 && stdout == install.EditDone+"\n" && stderr == "" && err == nil &&
+		bytes.Contains(edited, []byte(`"MCP_TOOL_TIMEOUT": "1800000"`)) && bytes.Contains(edited, []byte(`"EXAMPLE_API_TOKEN": "DO_NOT_ECHO"`))
+
+	code, stdout, stderr = run(nil, "config", "unset", "~/.claude/settings.json", "env.EXAMPLE_API_TOKEN")
+	after, err := os.ReadFile(path)
+	checks[2].Passed = code == 1 && stdout == "" && stderr == install.ErrEditCredential.Error()+"\n" && err == nil && bytes.Equal(after, edited)
+	return checks
+}
+
 // Simulate the documented client boundary: feed an ordinary read into the
 // hook, apply updatedInput, then execute the rewritten tool in an isolated home.
 // This tests the executable end to end; it does not assert live client trust.
@@ -241,7 +300,7 @@ func probe(ctx context.Context, binary string, input []byte, want int) bool {
 	message := ""
 	if want == 2 {
 		message = guard.Reason + "\n"
-		if stderr.String() == guard.ConfigReason+"\n" {
+		if stderr.String() == guard.ConfigReason+"\n" || stderr.String() == guard.ConfigEditReason(binary)+"\n" {
 			message = stderr.String()
 		}
 	}

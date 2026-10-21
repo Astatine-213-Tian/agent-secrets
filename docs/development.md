@@ -16,8 +16,8 @@ parses shell syntax and glob patterns without executing expansions.
 | --- | --- |
 | `cmd/agent-secrets` | CLI dispatch and process exit/output. |
 | `internal/guard` | One `Evaluate` entrypoint; request/context normalization, operation checks, and constrained rewrites; metadata only. |
-| `internal/policy` | Pure credential/path recognition, selective document/text redaction, native search exclusions, and closed config-read plans. |
-| `internal/install` | Installation/readback; shared metadata resolution and the private runner's controlled file reads. |
+| `internal/policy` | Pure credential/path recognition, selective document/text redaction, credential-safe JSON edits, native search exclusions, and closed config-read plans. |
+| `internal/install` | Installation/readback; shared metadata resolution, the private runner's controlled file reads and views, and `config set` file effects. |
 | `internal/verify` | Subprocess verification of the executable protocol. |
 
 ## Checks
@@ -44,6 +44,7 @@ mise exec -- go test ./internal/guard -run '^$' -fuzz FuzzHook -fuzztime 10s
 mise exec -- go test ./internal/install -run '^$' -fuzz FuzzPrepare -fuzztime 10s
 mise exec -- go test ./internal/policy -run '^$' -fuzz FuzzSanitize -fuzztime 10s
 mise exec -- go test ./internal/policy -run '^$' -fuzz FuzzPlan -fuzztime 10s
+mise exec -- go test ./internal/policy -run '^$' -fuzz FuzzEdit -fuzztime 10s
 ```
 
 For coverage: `mise exec -- go test -cover ./...`.
@@ -58,7 +59,7 @@ overrides the process working directory; tool `workdir` is resolved from it.
 | Outcome | Exit code | Output |
 | --- | --- | --- |
 | Ordinary allow | `0` | Silent. |
-| Supported config read or native ripgrep call | `0` | JSON `hookSpecificOutput` with `hookEventName: "PreToolUse"` and `updatedInput`. `hook` adds `permissionDecision: "allow"`, which Codex requires with `updatedInput`; `hook --client claude` omits it, because Claude Code treats `allow` as skipping its permission prompt for the whole command. |
+| Supported config read (shell `cat` or `Read` `file_path`) or native ripgrep call | `0` | JSON `hookSpecificOutput` with `hookEventName: "PreToolUse"` and `updatedInput`. `hook` adds `permissionDecision: "allow"`, which Codex requires with `updatedInput`; `hook --client claude` omits it, because Claude Code treats `allow` as skipping its permission prompt for the whole command. For `Read`, the hook first runs the private runner to store the view that `updatedInput.file_path` names. |
 | Denied, malformed, oversized, or uninspectable request | `2` | No stdout; fixed denial on stderr. |
 
 The denial is exactly:
@@ -71,7 +72,14 @@ When a denied request names a supported configuration file, `hook` (not
 `guard`, which has no config-read bridge) appends one fixed sentence:
 
 ```text
-For a redacted view of this configuration file, run cat on it in the shell, alone or piped (cat FILE | head -n 40).
+For a redacted view of this configuration file, use the Read tool on it, or run cat on it in the shell, alone or piped (cat FILE | head -n 40).
+```
+
+When `Edit`, `MultiEdit`, or `Write` is denied on a configuration that
+`config set` edits, the sentence instead names the hook's own executable:
+
+```text
+To change one setting without reading the file, run in the shell: 'BINARY' config set FILE KEY JSON_VALUE (for example env.EXAMPLE '"value"'), or config unset FILE KEY. Credential settings are refused.
 ```
 
 Rewriting requires object-valued `tool_input` and a supported tool/command
@@ -89,6 +97,14 @@ and this fixed stderr message:
 ```text
 Cannot safely run protected operation; no file contents or error details were printed.
 ```
+
+A view plan has the runner write the sanitized view to its fixed private path
+and print nothing; the hook discards the runner's output and denies the read
+if the runner fails or exceeds three seconds.
+
+`config set` and `config unset` print a fixed success line on stdout, or one
+fixed usage, unsupported-file, credential-refusal, or failure line on stderr
+with exit `1`. They never print file contents, the key, or the value.
 
 The private reader reads bounded regular files and launches no subprocess.
 Native commands retain their own errors and exit behavior. Hook responses and reader

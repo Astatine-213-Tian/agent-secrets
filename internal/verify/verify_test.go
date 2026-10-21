@@ -28,6 +28,16 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(guard.Check(os.Stdin, os.Stderr, home, cwd))
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "config" {
+		home, _ := os.UserHomeDir()
+		cwd, _ := os.Getwd()
+		if err := install.ConfigCommand(home, cwd, os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println(install.EditDone)
+		os.Exit(0)
+	}
 	if len(os.Args) == 3 && os.Args[1] == "__run" {
 		home, _ := os.UserHomeDir()
 		b, err := install.RunPlan(home, os.Args[2])

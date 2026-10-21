@@ -1,8 +1,14 @@
 package guard
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"os"
+	"os/exec"
+	"time"
+
+	"github.com/Astatine-213-Tian/agent-secrets/internal/policy"
 )
 
 // Hook adds transparent shell-read rewriting to Check. Neither path reads any
@@ -33,6 +39,10 @@ func hook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string, a
 		return 2
 	}
 	decision := Evaluate(data, home, cwd, binary)
+	if decision.View != nil && !storeView(binary, home, *decision.View) {
+		_, _ = io.WriteString(stderr, Reason+"\n")
+		return 2
+	}
 	if decision.Kind == Rewrite {
 		updated := decision.Input
 		output := map[string]any{"hookEventName": "PreToolUse", "updatedInput": updated}
@@ -53,9 +63,23 @@ func hook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string, a
 		return 0
 	}
 	reason := Reason
-	if decision.ConfigView {
+	if decision.ConfigEdit {
+		reason = ConfigEditReason(binary)
+	} else if decision.ConfigView {
 		reason = ConfigReason
 	}
 	_, _ = io.WriteString(stderr, reason+"\n")
 	return 2
+}
+
+// storeView has the private runner, a separate process, write the sanitized
+// copy that a rewritten file-tool read names, so the hook never reads the
+// configuration itself. The runner's output is discarded: a view plan prints
+// nothing, and nothing from the runner may reach the client.
+func storeView(binary, home string, plan policy.Plan) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	c := exec.CommandContext(ctx, binary, "__run", plan.Encode())
+	c.Env = append(os.Environ(), "HOME="+home)
+	return c.Run() == nil
 }

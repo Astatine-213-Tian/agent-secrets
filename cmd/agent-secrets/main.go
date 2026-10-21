@@ -75,6 +75,19 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 			return 1
 		}
 		return 0
+	case "config":
+		cwd, e := os.Getwd()
+		if e != nil {
+			e = install.ErrEdit
+		} else {
+			e = install.ConfigCommand(home, cwd, args[1:])
+		}
+		if e != nil {
+			fmt.Fprintln(errOut, e)
+			return 1
+		}
+		fmt.Fprintln(out, install.EditDone)
+		return 0
 	case "install":
 		f := flag.NewFlagSet(args[0], flag.ContinueOnError)
 		f.SetOutput(io.Discard)
@@ -160,6 +173,8 @@ func usage(w io.Writer) {
   install [--home PATH]             Install Go hooks for both clients
   guard                            Check one JSON hook request on stdin (exit 0 or 2)
   hook                             Screen requests and sanitize common config reads
+  config set FILE KEY JSON_VALUE   Change one non-credential setting without printing the file
+  config unset FILE KEY            Remove one non-credential setting
   verify                           Test this executable with synthetic hook requests
   status                           Read back hooks and installed binary
   version                          Print package and Go versions

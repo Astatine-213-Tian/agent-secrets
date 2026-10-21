@@ -58,6 +58,30 @@ func (shell *shellCommand) rewriteRead(binary string) string {
 	return applyShellEdits(shell.source, edits)
 }
 
+// readView points Claude Code's Read tool at a private sanitized copy of a
+// supported configuration. Evaluate reads nothing: the hook has the private
+// runner store the copy from the returned plan before emitting the rewrite.
+func (g checker) readView(tool string, args any) (map[string]any, policy.Plan, bool) {
+	input, ok := args.(map[string]any)
+	if tool != "Read" || !ok {
+		return nil, policy.Plan{}, false
+	}
+	p, ok := input["file_path"].(string)
+	if !ok {
+		return nil, policy.Plan{}, false
+	}
+	p = g.absolute(p)
+	if g.locations().ConfigFormat(p) == "" {
+		return nil, policy.Plan{}, false
+	}
+	updated := make(map[string]any, len(input))
+	for key, value := range input {
+		updated[key] = value
+	}
+	updated["file_path"] = policy.ViewPath(g.home, p)
+	return updated, policy.Plan{Kind: "view", Path: p, Cwd: g.cwd}, true
+}
+
 // Recognize a basic cat read directly from the already-parsed statement.
 func (g checker) readPlan(s *syntax.Stmt, source string) (policy.Plan, bool) {
 	no := policy.Plan{}

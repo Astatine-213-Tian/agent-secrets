@@ -10,8 +10,8 @@ by default and removes only explicitly recognized credentials.
 | --- | --- | --- |
 | Request screening (`guard`) | Evaluate a hook request into allow, deny, or rewrite. | Normalize execution context, recognize disclosure operations, and apply access rules using arguments and metadata only. |
 | Credential policy (`policy`) | Classify names/paths and sanitize a parsed document or string. | Own credential conventions and default-visible redaction. No filesystem reads or command execution. |
-| Private runner (within `install`) | Return a validated, sanitized config view. | Revalidate plans, resolve and open supported files, and sanitize configurations before output. |
-| Installation (`install`) | Prepare, install, inspect. | Preserve unrelated settings, back up privately, replace atomically, and read back. |
+| Private runner (within `install`) | Return or store a validated, sanitized config view. | Revalidate plans, resolve and open supported files, and sanitize configurations before output. |
+| Installation (`install`) | Prepare, install, inspect, edit one config setting. | Preserve unrelated settings, back up privately, replace atomically, and read back. |
 | Verification (`verify`) | Exercise the executable. | Synthetic requests and isolated homes through the actual process interface. |
 
 The CLI dispatches and encodes fixed user-facing responses. A separate module
@@ -31,7 +31,8 @@ arguments without an exemption per application. Nested execution, expansions,
 redirections, explicit file APIs, and recognized dumps have independent checks.
 
 The two deliberate rewriting exceptions are a basic config-read bridge and
-native search exclusions for ripgrep and recursive grep. Reader-option
+native search exclusions for ripgrep and recursive grep. The bridge covers shell
+`cat` reads and Claude Code `Read` calls; `guard/read.go` owns both forms. Reader-option
 emulation and private search execution are absent. `guard/read.go` owns the config bridge; `guard/search.go` owns the
 search exception; `guard/operations.go` and `guard/find.go` own disclosure checks.
 Both rewrites share tool-input extraction, working-directory resolution, parsed
@@ -90,6 +91,19 @@ the runner validates its kind, paths, and resource classification again.
 It accepts no executable, command options, or output destination. It returns
 sanitized bytes directly and never starts a subprocess. Native downstream tools
 process that view through ordinary shell pipelines.
+
+A file tool has no pipeline to substitute, so a `Read` of a supported config is
+rewritten to a stored view. `Evaluate` stays pure and returns the view plan; the
+hook starts the private runner as a separate process, so the hook itself still
+reads no contents. The runner derives the view's location from its own home and
+the source path. Failure to store the view denies the read.
+
+Config edits are the write-side counterpart. `policy.Edit` is pure: it changes
+one object member and refuses credential keys and any replaced value that the
+sanitized view would hide. Array elements cannot be addressed, because argument
+classification spans neighbouring elements. `install` owns the file effects,
+following the installation rules for backup, conflicts, atomic replacement, and
+readback. The edit prints only fixed messages.
 
 Only regular config files may be read. Check paths and opened-file identity at
 execution time. Buffer results so fixed errors cannot expose raw configuration

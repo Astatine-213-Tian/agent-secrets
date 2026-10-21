@@ -38,13 +38,7 @@ func Sanitize(format string, data []byte) (out []byte, err error) {
 			return nil, ErrDocument
 		}
 	case "json":
-		d := json.NewDecoder(bytes.NewReader(data))
-		d.UseNumber()
-		if d.Decode(&document) != nil || document == nil {
-			return nil, ErrDocument
-		}
-		var extra any
-		if d.Decode(&extra) != io.EOF {
+		if document = decodeJSON(data); document == nil {
 			return nil, ErrDocument
 		}
 	default:
@@ -66,6 +60,21 @@ func Sanitize(format string, data []byte) (out []byte, err error) {
 		return nil, ErrDocument
 	}
 	return buf.Bytes(), nil
+}
+
+// decodeJSON returns one JSON object with numbers kept exact, or nil.
+func decodeJSON(data []byte) map[string]any {
+	var document map[string]any
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.UseNumber()
+	if d.Decode(&document) != nil {
+		return nil
+	}
+	var extra any
+	if d.Decode(&extra) != io.EOF {
+		return nil
+	}
+	return document
 }
 
 func sanitizeValue(value any, path []string, hidden bool) (any, error) {

@@ -20,9 +20,16 @@ import (
 const Reason = "Blocked by global credential protection: secret files and environment values must not enter agent transcripts."
 
 // ConfigReason replaces Reason in the hook when a denied request names a
-// supported configuration file, which the shell config-read bridge can show
-// with secrets redacted. Like Reason it is fixed and never echoes the request.
-const ConfigReason = Reason + " For a redacted view of this configuration file, run cat on it in the shell, alone or piped (cat FILE | head -n 40)."
+// supported configuration file, which the config-read bridge can show with
+// secrets redacted. Like Reason it is fixed and never echoes the request.
+const ConfigReason = Reason + " For a redacted view of this configuration file, use the Read tool on it, or run cat on it in the shell, alone or piped (cat FILE | head -n 40)."
+
+// ConfigEditReason replaces Reason in the hook when a file tool would change
+// a configuration that config set can edit. It names only the hook's binary.
+func ConfigEditReason(binary string) string {
+	return Reason + " To change one setting without reading the file, run in the shell: " + shellQuote(binary) + ` config set FILE KEY JSON_VALUE (for example env.EXAMPLE '"value"'), or config unset FILE KEY. Credential settings are refused.`
+}
+
 const maxInput = 4 << 20
 
 var envRef = regexp.MustCompile(`(?:^|[^\w.\-])(\.env(?:\.[\w*?\[\]-]+)*)(?:$|[^\w.\-])`)

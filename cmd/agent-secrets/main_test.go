@@ -35,6 +35,8 @@ func TestCLI(t *testing.T) {
 		{[]string{"hook"}, "DO_NOT_ECHO", 2},
 		{[]string{"__run"}, "", 1},
 		{[]string{"config-view"}, "", 1},
+		{[]string{"config"}, "", 1},
+		{[]string{"config", "set", "DO_NOT_ECHO"}, "", 1},
 	} {
 		var out, stderr bytes.Buffer
 		if got := run(tt.args, strings.NewReader(tt.input), &out, &stderr); got != tt.want {
@@ -78,5 +80,36 @@ func TestPrivateReaderCLI(t *testing.T) {
 				t.Fatal("sanitized config protocol failed")
 			}
 		}
+	}
+}
+
+func TestConfigCLI(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := filepath.Join(home, ".claude/settings.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	original := `{"env": {"API_TOKEN": "DO_NOT_ECHO"}}`
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		args    []string
+		code    int
+		message string
+	}{
+		{[]string{"config", "set", path, "env.API_TOKEN", `"x"`}, 1, install.ErrEditCredential.Error()},
+		{[]string{"config", "set", path, "env.MCP_TOOL_TIMEOUT", `"1800000"`}, 0, install.EditDone},
+	} {
+		var out, stderr bytes.Buffer
+		code := run(tt.args, strings.NewReader(""), &out, &stderr)
+		if code != tt.code || out.String()+stderr.String() != tt.message+"\n" {
+			t.Fatalf("%v: got %d", tt.args, code)
+		}
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(b), `"MCP_TOOL_TIMEOUT": "1800000"`) || !strings.Contains(string(b), "DO_NOT_ECHO") {
+		t.Fatal("config set did not preserve and update settings")
 	}
 }

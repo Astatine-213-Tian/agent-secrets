@@ -11,7 +11,9 @@ values remain visible; there is no setting, type, or safe-value allowlist.
 The hook inspects arguments and filesystem metadata only. A separate private
 runner reads and sanitizes supported configs. Ordinary commands execute natively,
 with their own options, environment, output, and exit behavior. The only input
-rewrites are the basic config-read bridge and native ripgrep path exclusions.
+rewrites are the config-read bridge (basic shell `cat` reads and Claude Code
+`Read` calls) and native ripgrep path exclusions. `config set` and `config unset`
+change one non-credential setting without printing the file.
 There is no general command runner or catalogue of permitted native options.
 
 ## Protected resources
@@ -57,7 +59,7 @@ directory. Recognized computed location changes are rejected.
 | Recognized copy/rename/export of a conventional credential directory as source | Deny, including its containing home directory. Copying an ordinary file into the home directory is allowed. |
 | Shell writes to a protected file: output redirects (`>`, `>>`), the `cp`/`mv` destination, `tee` outputs | Allow: writing discloses nothing. Sources and input redirects remain screened. |
 | Write tool creating a new file | Allow. An existing file or link keeps the normal rules. |
-| Edit/patch of a protected file | Deny; these tools can expose previous contents or diffs. |
+| Edit/patch of a protected file | Deny; these tools can expose previous contents or diffs. For Claude `settings.json` and Docker `config.json`, the denial points to [`config set`](#config-edits). |
 | `find` actions | Inspect explicit nested commands and protected operands. Common bulk readers such as `-exec cat {} +` are denied; `-exec basename {} \;` is allowed. |
 | Environment, process-environment, or credential-store dumps | Deny. |
 | Other application commands with credential-file arguments | Allow unless a separate recognized operation is denied. A protected filename alone is not a reason to block. |
@@ -209,7 +211,17 @@ under normal shell pipeline rules. Recognized downstream file operations and
 nested execution remain screened. The sanitizer never launches another command.
 Direct `head`, `tail`, `sed`, or `cat` with options on a protected config remain
 raw protected reads and are denied. There is no supported-reader option table.
-Generic Read/MCP file tools are also denied on protected configs.
+
+A `Read` call whose `file_path` names a supported config (absolute, `~/…`, or
+relative to the request `cwd`) is pointed at a sanitized copy. The hook starts
+the private runner as a separate process with a closed view plan; the runner
+writes the view to `~/.cache/agent-secrets/views/<hash>-<name>` (directory
+`0700`, file `0600`) and prints nothing. The view location derives from the
+trusted home and source path, not from the plan, and each source has one view
+that every read replaces. Other `Read` arguments such as `offset` and `limit`
+are preserved and apply to the view. If the view cannot be written, the read is
+denied. `guard`, other generic file tools, and MCP file tools remain denied on
+protected configs.
 
 Files must be regular and at most 4 MiB. Config-file symlinks and symlinks below
 user-home config locations are refused. The entire document is parsed before
@@ -289,6 +301,35 @@ arguments, or URLs.
 Outside a header, `Basic` requires a valid base64 `user:password` pair. `Bearer`
 requires at least eight characters, excluding the explanatory words `token`,
 `tokens`, `authentication`, `authorization`, and `credentials`.
+
+## Config edits
+
+```sh
+agent-secrets config set FILE KEY JSON_VALUE
+agent-secrets config unset FILE KEY
+```
+
+`FILE` must be Claude `~/.claude/settings.json` or a Docker `config.json`
+location. TOML and npm files are refused so their comments are not lost.
+`KEY` is dot-separated (`env.MCP_TOOL_TIMEOUT`) or a JSON array of member
+names for names containing dots. `JSON_VALUE` is one JSON value, so a string is
+quoted twice in the shell: `'"1800000"'`. Missing parent objects are created.
+
+An edit is refused when the key or any parent key is a credential name, or when
+the replaced or removed value is not fully visible in the sanitized view. Keys
+address object members only, never array elements, so an edit cannot change how
+another value is classified. Symlinked and malformed files are refused. In
+Claude `settings.json`, an edit that removes the agent-secrets hook
+registration or sets `disableAllHooks` is refused; other hooks stay editable.
+Client permissions still govern the command like any other shell command.
+
+The edit follows the installation rules: parse before writing, back up the
+original privately under `~/.local/share/agent-secrets/backups/`, refuse a
+concurrent change, replace atomically with the original mode, and verify by
+readback. The document is re-encoded with two-space indentation and sorted keys;
+JSON number precision is kept. Output is a fixed message; the file and the
+request are never printed. `agent-secrets` is outside the file-command set, so
+its `FILE` argument is not screened as a read.
 
 ## Coverage limits
 

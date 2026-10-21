@@ -82,6 +82,8 @@ cat ~/.codex/config.toml | sed -n '1,120p'
 
 The hook rewrites supported reads automatically. The tool receives a redacted
 inspection view; line numbers refer to that view, not the original file.
+In Claude Code, the `Read` tool on these files also works: it reads a private
+redacted copy kept under `~/.cache/agent-secrets/views/`.
 The [redaction reference](rule-reference.md#redaction-rules) lists the value
 checks and supported read forms. Tools after the pipe keep their normal options.
 The hook still blocks known raw reads of protected configuration files.
@@ -95,6 +97,20 @@ Application commands such as `uv run --env-file .env app.py` are allowed;
 shell filename checks apply only to the [listed file commands](rule-reference.md#operation-checks).
 Pipelines and compound searches keep their original shell behavior. Coverage
 and limits are listed in the rules.
+
+To change a setting in Claude `settings.json` or Docker `config.json` without
+reading it, agents (or you) run the installed executable:
+
+```sh
+~/.local/share/agent-secrets/agent-secrets config set ~/.claude/settings.json env.MCP_TOOL_TIMEOUT '"1800000"'
+~/.local/share/agent-secrets/agent-secrets config unset ~/.claude/settings.json env.MCP_TOOL_TIMEOUT
+```
+
+The value is JSON, so strings need inner quotes. Credential settings are
+refused, the original is backed up under `~/.local/share/agent-secrets/backups/`,
+and only a fixed message is printed. The hook's denial of an `Edit` on these
+files names this command. Restart the client if it does not reload the file.
+See the [edit rules](rule-reference.md#config-edits).
 
 Use `agent-secrets help` for the CLI and `agent-secrets version` for the package
 and Go versions. The private reader is an internal hook target, not a public

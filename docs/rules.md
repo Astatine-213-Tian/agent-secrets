@@ -28,7 +28,8 @@ It also checks shell redirections, printed secret variables, and later commands.
 Using a secret variable, as in `curl -H "Authorization: Bearer $GITHUB_TOKEN"`, is allowed.
 For example, `uv run --env-file .env app.py; cat .env` is blocked.
 
-Direct file tools, such as `Read`, cannot read protected files.
+Direct file tools, such as `Read`, cannot read protected files. Claude Code's
+`Read` of a supported configuration file receives the redacted view instead.
 The hook also checks patch targets and known file access calls in scripts.
 
 ## Protected files
@@ -64,7 +65,7 @@ Other values remain visible.
 
 This works for supported Codex, Claude, Docker, and npm configuration files.
 It does not provide a readable view of `.env` or login token stores.
-When a file tool or another command is denied on a supported configuration,
+When another command is denied on a supported configuration,
 the denial message points to this `cat` view.
 Use a pipe to select part of the result:
 
@@ -72,7 +73,24 @@ Use a pipe to select part of the result:
 cat ~/.codex/config.toml | head -n 40
 ```
 
+In Claude Code, `Read` of the same files is pointed at a private redacted copy
+under `~/.cache/agent-secrets/views/`, so `offset` and `limit` work as usual.
 The reader does not change the source file.
+
+## Changing settings
+
+`Edit` and `Write` stay blocked on these files, because they show previous
+contents. To change one setting without reading the file, run:
+
+```sh
+agent-secrets config set ~/.claude/settings.json env.MCP_TOOL_TIMEOUT '"1800000"'
+agent-secrets config unset ~/.claude/settings.json env.MCP_TOOL_TIMEOUT
+```
+
+This works for Claude `settings.json` and Docker `config.json`.
+It refuses to write, replace, or remove a credential, prints no values, and
+backs up the original. The denial for a blocked edit names this command.
+See the [edit rules](rule-reference.md#config-edits).
 See the [supported read forms](rule-reference.md#supported-config-reads)
 and [exact value checks](rule-reference.md#credential-keys-and-paths).
 
