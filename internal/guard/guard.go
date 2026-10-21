@@ -143,7 +143,7 @@ func (g checker) inspectPath(value string, role pathRole) bool {
 	if decoded, err := url.PathUnescape(value); err == nil {
 		value = decoded
 	}
-	value = strings.ReplaceAll(value, `\`, "/")
+	value = separators(value, role)
 	if strings.ContainsRune(value, 0) {
 		return true
 	}
@@ -227,6 +227,23 @@ func (g checker) inspectPath(value string, role pathRole) bool {
 	}
 
 	return false
+}
+
+// separators reads backslashes as path separators. In a metadata value, a
+// backslash before a wildcard is an escape, as in Markdown `\*\*bold\*\*`; it
+// is kept so the wildcard check below matches that character literally.
+func separators(value string, role pathRole) string {
+	b := []byte(value)
+	for i, c := range b {
+		if c != '\\' {
+			continue
+		}
+		if role == metadataValue && i+1 < len(b) && strings.IndexByte("*?[", b[i+1]) >= 0 {
+			continue
+		}
+		b[i] = '/'
+	}
+	return string(b)
 }
 
 func (g checker) codeBlocked(code string) bool {

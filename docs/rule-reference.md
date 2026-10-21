@@ -65,7 +65,9 @@ directory. Recognized computed location changes are rejected.
 Tool path arguments (`path`, `paths`, `file_path`, `filepath`, `filename`,
 `file`, `uri`, `url`, `resource_uri`) are always screened. Any other tool
 argument is screened as a file name only when it is a single word without
-whitespace; queries, titles, and page text are prose.
+whitespace; queries, titles, and page text are prose. In such a word, a
+backslash before `*`, `?`, or `[` is an escape, as in Markdown `\*\*bold\*\*`,
+so that character is matched literally; other backslashes are path separators.
 
 Shell operand checks apply to this finite set of common file-handling commands:
 `cat`, `bat`, `nl`, `tac`, `xargs`, `head`, `tail`, `less`, `more`, `sed`, `awk`,

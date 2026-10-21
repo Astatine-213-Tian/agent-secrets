@@ -164,6 +164,16 @@ func TestProseArguments(t *testing.T) {
 		{"mcp__tool__open", map[string]any{"target": "~/.ssh/id_ed25519"}, 2},
 		{"mcp__tool__open", map[string]any{"target": "README.md"}, 0},
 		{"mcp__tool__open", map[string]any{"path": "notes/my .env"}, 2},
+		// Escaped Markdown is literal text, not a separator and a wildcard.
+		{"mcp__notion__notion-update-page", map[string]any{"page_id": "400ca693996b8198bf15c10da6e5f249", "command": "update_content", "content_updates": []any{
+			map[string]any{"old_str": `\*\*酥油饼：\*\*`, "new_str": "<b>酥油饼：</b>", "replace_all_matches": true},
+			map[string]any{"old_str": `\*a\*`, "new_str": `\?\[x]`},
+		}}, 0},
+		// Unescaped wildcards and backslash separators keep the file-name rules.
+		{"mcp__tool__open", map[string]any{"target": "~/.ssh/*"}, 2},
+		{"mcp__tool__open", map[string]any{"target": `~\.ssh\id_ed25519`}, 2},
+		{"mcp__tool__open", map[string]any{"target": `\.env`}, 2},
+		{"mcp__tool__open", map[string]any{"path": `~/.ssh/\*`}, 2},
 	} {
 		check(t, tt.tool, tt.args, home, cwd, tt.want)
 	}
