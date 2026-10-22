@@ -186,6 +186,9 @@ func (g checker) screenShell(code string, depth int) (string, bool) {
 			patterns := searchPatterns(name, args[1:])
 			metadata := metadataCommand(name, args[1:])
 			if grepCommand(name) && recursiveGrep(name, args[1:]) && op.grepsProtectedDirectory(args[1:], patterns) {
+				if op.grepTree != nil {
+					*op.grepTree = true
+				}
 				blocked = true
 				return false
 			}

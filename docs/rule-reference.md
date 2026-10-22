@@ -222,8 +222,8 @@ recursive grep (`-r`, `-R`, `--recursive`, `-d recurse`, `rgrep`), the hook adds
 `--exclude` and `--exclude-dir` options for protected names that apply
 anywhere. It puts them immediately after the command name. Grep matches only
 base names. Thus, the hook denies a recursive grep of a directory that contains
-home credential stores, for example `~` or `~/.aws`. Use `rg` for these
-directories.
+home credential stores, for example `~`, `~/.aws`, or `~/.claude`. Use `rg`
+for these directories. The denial message of the hook gives this instruction.
 
 `guard` examines arguments, but it cannot add exclusions. For native search
 rewrites, use the installed `hook`. There is no private search runner, search

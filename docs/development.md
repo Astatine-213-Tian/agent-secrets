@@ -87,6 +87,15 @@ the hook:
 To change one setting without reading the file, run in the shell: 'BINARY' config set FILE KEY JSON_VALUE (for example env.EXAMPLE '"value"'), or config unset FILE KEY. Credential settings are refused.
 ```
 
+If the hook denies a recursive grep of a directory that contains home
+credential stores, it adds a different sentence. `guard` does not add it,
+because `guard` cannot add `rg` exclusions. A configuration sentence has
+priority.
+
+```text
+Recursive grep cannot skip the protected files in this directory; use rg instead, which skips them.
+```
+
 The `additionalContext` note on a `Read` view tells the agent three things:
 
 - The original file is not read for Claude Code, so `Edit` and `Write` on it

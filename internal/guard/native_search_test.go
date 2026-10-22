@@ -195,3 +195,60 @@ func TestNativeSearchKeepsExplicitLeakChecks(t *testing.T) {
 		}
 	}
 }
+
+func TestRecursiveGrepDenialPointsToRg(t *testing.T) {
+	home, project := t.TempDir(), t.TempDir()
+	for name, content := range map[string]string{
+		".claude/.credentials.json": "needle DO_NOT_ECHO",
+		".claude/settings.json":     "needle DO_NOT_ECHO",
+		".claude/history.jsonl":     "needle",
+	} {
+		path := filepath.Join(home, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hook := func(command string) (int, string) {
+		input, _ := json.Marshal(map[string]any{"tool_name": "Bash", "cwd": project, "tool_input": map[string]any{"command": command}})
+		var out, stderr bytes.Buffer
+		return guard.Hook(bytes.NewReader(input), &out, &stderr, home, project, "/tmp/binary"), stderr.String()
+	}
+	for _, tt := range []struct{ command, reason string }{
+		{"grep -rl needle ~/.claude", guard.GrepTreeReason},
+		{"cd ~/.claude && grep -r needle .", guard.GrepTreeReason},
+		{"sh -c 'grep -r needle ~'", guard.GrepTreeReason},
+		{"rgrep needle ~", guard.GrepTreeReason},
+		{"grep -r needle ~/.claude; cat ~/.codex/config.toml", guard.GrepTreeReason},
+		{"grep -r needle ~/.claude; head ~/.codex/config.toml", guard.ConfigReason},
+		{"grep -r needle .; cat .env", guard.Reason},
+		{"grep needle ~/.claude/.credentials.json", guard.Reason},
+	} {
+		if code, stderr := hook(tt.command); code != 2 || stderr != tt.reason+"\n" {
+			t.Fatalf("%s: wrong denial", tt.command)
+		}
+		// guard cannot rewrite rg, so it never suggests it.
+		input, _ := json.Marshal(map[string]any{"tool_name": "Bash", "cwd": project, "tool_input": map[string]any{"command": tt.command}})
+		var stderr bytes.Buffer
+		if guard.Check(bytes.NewReader(input), &stderr, home, project) != 2 || stderr.String() != guard.Reason+"\n" {
+			t.Fatalf("%s: guard suggested rg", tt.command)
+		}
+	}
+	if code, _ := hook("grep -r needle ~/.claude/projects"); code != 0 {
+		t.Fatal("recursive grep below the credential stores denied")
+	}
+	// The suggested rg search runs and skips the protected files.
+	updated := rewrittenSearch(t, "rg --hidden -l needle ~/.claude", home, project)
+	cmd := exec.Command("/bin/sh", "-c", updated)
+	cmd.Dir = project
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("native rg failed: %v: %s", err, out)
+	}
+	if !strings.Contains(string(out), "history.jsonl") || strings.Contains(string(out), ".credentials.json") || strings.Contains(string(out), "settings.json") {
+		t.Fatalf("wrong rg results: %s", out)
+	}
+}

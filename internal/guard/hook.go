@@ -70,6 +70,8 @@ func hook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string, a
 		reason = ConfigEditReason(binary)
 	} else if decision.ConfigView {
 		reason = ConfigReason
+	} else if decision.GrepTree {
+		reason = GrepTreeReason
 	}
 	_, _ = io.WriteString(stderr, reason+"\n")
 	return 2

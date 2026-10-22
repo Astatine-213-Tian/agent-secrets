@@ -24,6 +24,12 @@ const Reason = "Blocked by global credential protection: secret files and enviro
 // secrets redacted. Like Reason it is fixed and never echoes the request.
 const ConfigReason = Reason + " For a redacted view of this configuration file, use the Read tool on it, or run cat on it in the shell, alone or piped (cat FILE | head -n 40)."
 
+// GrepTreeReason replaces Reason in the hook when a denied request runs a
+// recursive grep over a directory holding home credential stores. The hook
+// rewrites rg searches to skip those paths, which grep's base-name exclusions
+// cannot express.
+const GrepTreeReason = Reason + " Recursive grep cannot skip the protected files in this directory; use rg instead, which skips them."
+
 // ConfigEditReason replaces Reason in the hook when a file tool would change
 // a configuration that config set can edit. It names only the hook's binary.
 func ConfigEditReason(binary string) string {
@@ -64,6 +70,9 @@ func Check(input io.Reader, stderr io.Writer, home, cwd string) (exitCode int) {
 type checker struct {
 	home, cwd, tool string
 	stores          *policy.Locations
+	// grepTree, shared by copies, records a denied recursive grep over a
+	// directory holding home credential stores. It only selects the message.
+	grepTree *bool
 }
 
 func (g checker) locations() policy.Locations {

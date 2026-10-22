@@ -29,8 +29,10 @@ type Decision struct {
 	Context string
 	// ConfigView marks a denial that names a supported configuration file
 	// while the config-read bridge is available. ConfigEdit marks a denied
-	// file-tool change to a configuration that config set can edit.
-	ConfigView, ConfigEdit bool
+	// file-tool change to a configuration that config set can edit. GrepTree
+	// marks a denied recursive grep over a directory holding home credential
+	// stores while rg rewriting is available.
+	ConfigView, ConfigEdit, GrepTree bool
 }
 
 // Evaluate is the screening boundary. It parses once, retains JSON precision,
@@ -87,7 +89,8 @@ func Evaluate(data []byte, home, cwd, binary string) (decision Decision) {
 	default:
 		return
 	}
-	g := checker{home: home, cwd: cwd, tool: strings.ToLower(tool)}
+	grepTree := false
+	g := checker{home: home, cwd: cwd, tool: strings.ToLower(tool), grepTree: &grepTree}
 	var shell *shellCommand
 	if filepath.IsAbs(binary) {
 		shell = g.shellCommand(tool, payload["tool_input"])
@@ -108,7 +111,7 @@ func Evaluate(data []byte, home, cwd, binary string) (decision Decision) {
 	// operands and sibling inputs stay subject to the same disclosure rules.
 	if g.inspect(args, "") {
 		bridge := filepath.IsAbs(binary)
-		return Decision{Kind: Deny, ConfigView: bridge && g.namesConfig(args), ConfigEdit: bridge && g.editsConfig(tool, args)}
+		return Decision{Kind: Deny, ConfigView: bridge && g.namesConfig(args), ConfigEdit: bridge && g.editsConfig(tool, args), GrepTree: bridge && grepTree}
 	}
 	if view != nil {
 		return Decision{Kind: Rewrite, Input: args.(map[string]any), View: view, Context: ViewContext(binary, g.locations().Editable(view.Path))}

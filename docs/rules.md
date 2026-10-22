@@ -64,7 +64,8 @@ that skip protected paths.
 | `rg --files` | The hook allows the file list. |
 
 Recursive `grep` cannot skip home credential stores by path.
-Thus, the hook blocks `grep -r TOKEN ~`. Use `rg` instead.
+Thus, the hook blocks `grep -r TOKEN ~` and `grep -r TOKEN ~/.claude`.
+The denial message tells you to use `rg` instead.
 The search tool controls its options, output, and exit code.
 
 ## Redaction rules
