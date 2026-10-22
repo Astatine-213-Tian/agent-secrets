@@ -180,5 +180,5 @@ func (g checker) absolute(p string) string {
 }
 
 func (g checker) configPath(p string) bool {
-	return g.locations().ConfigFormat(g.absolute(p)) != ""
+	return g.locations().Config(g.absolute(p)) != ""
 }

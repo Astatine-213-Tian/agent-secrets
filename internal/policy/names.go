@@ -46,7 +46,12 @@ func SensitiveQuery(name string) bool {
 	return SecretName(name)
 }
 
-func referenceField(path []string, value any) bool {
+// referenceField keeps Codex environment-variable references visible, even
+// below a credential-like name such as env_http_headers."X-API-Key".
+func referenceField(config Config, path []string, value any) bool {
+	if config != CodexConfig {
+		return false
+	}
 	if len(path) >= 3 && path[0] == "profiles" {
 		path = path[2:]
 	}
@@ -63,7 +68,7 @@ func referenceField(path []string, value any) bool {
 	return valid && ok && environmentName.MatchString(s)
 }
 
-func sensitiveField(path []string) bool {
+func sensitiveField(config Config, path []string) bool {
 	if len(path) == 0 {
 		return false
 	}
@@ -71,7 +76,7 @@ func sensitiveField(path []string) bool {
 	// Claude Code's sandbox.credentials declares which variables and files to
 	// protect: names, paths, modes, and hosts, never their values. Its members
 	// are checked by the ordinary rules instead of being hidden wholesale.
-	if len(path) == 2 && path[0] == "sandbox" && path[1] == "credentials" {
+	if config == ClaudeSettings && len(path) == 2 && path[0] == "sandbox" && path[1] == "credentials" {
 		return false
 	}
 	// ~/.claude.json keeps the endings of API keys the user approved or

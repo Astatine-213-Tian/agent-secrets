@@ -335,11 +335,16 @@ arrays, and `profiles.<name>` subtrees. Context adds these matches:
 - Claude `~/.claude.json` `projects.<path>.history`. This item is an older
   prompt history, and it can contain pasted secrets.
 
-The top-level `sandbox.credentials` block of Claude Code is an exception to the
-container rule. This block gives the variables and files to protect by name,
-path, mode, and host. Thus, its members use the usual rules, and the runner does
-not hide the full block. A `credentials` key in a different location continues
-to hide its subtree.
+The rules that hide values apply to all supported configs. If a rule matches
+in an unrelated file, the runner only hides more. The two rules that keep a
+value visible apply only to one config each. In other configs, the same layout
+stays hidden.
+
+The top-level `sandbox.credentials` block in Claude `settings.json` is an
+exception to the container rule. This block gives the variables and files to
+protect by name, path, mode, and host. Thus, its members use the usual rules,
+and the runner does not hide the full block. A `credentials` key in a different
+location or in a different file continues to hide its subtree.
 
 The runner hides only sensitive inline environment entries. `NODE_ENV`,
 `LOG_LEVEL`, `PATH`, and values that do not match stay visible. But the runner
@@ -348,8 +353,9 @@ source files.
 
 ### References and headers
 
-These fields keep environment-variable names that have a correct syntax. The
-runner does not look up their values. The fields also apply below profiles:
+In Codex `config.toml` only, these fields keep environment-variable names that
+have a correct syntax. The runner does not look up their values. The fields
+also apply below profiles:
 
 - `mcp_servers.<name>.bearer_token_env_var`
 - `mcp_servers.<name>.env_vars[]`
@@ -409,8 +415,8 @@ The command makes missing parent objects.
 The command refuses an edit in these conditions:
 
 - The key or a parent key is a credential name.
-- The sanitized view does not fully show the value that the edit replaces or
-  removes.
+- The sanitized view of that file does not fully show the value that the edit
+  replaces or removes.
 - The file is a symlink or is malformed.
 - In Claude `settings.json`, the edit removes the agent-secrets hook
   registration, sets `disableAllHooks`, or changes all of `sandbox` or

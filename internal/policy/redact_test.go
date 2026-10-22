@@ -49,7 +49,7 @@ base_url = "https://example.com/v1"
 env_http_headers = { Authorization = "PROVIDER_HEADER" }
 query_params = { api_key = "DO_NOT_ECHO", version = "2" }
 `
-	out, e := policy.Sanitize("toml", []byte(input))
+	out, e := policy.Sanitize(policy.CodexConfig, []byte(input))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -88,7 +88,7 @@ query_params = { api_key = "DO_NOT_ECHO", version = "2" }
 			t.Errorf("preservation/redaction at %v: got %#v", tt.path, value(tt.path...))
 		}
 	}
-	again, e := policy.Sanitize("toml", out)
+	again, e := policy.Sanitize(policy.CodexConfig, out)
 	if e != nil || !bytes.Equal(out, again) {
 		t.Fatal("not idempotent")
 	}
@@ -102,16 +102,16 @@ func TestRedactionSyntaxAndFormats(t *testing.T) {
 		`credentials = {one = "DO_NOT_ECHO", array = ["DO_NOT_ECHO"]}`,
 		"[profiles.work.mcp_servers.demo]\nargs = ['--password', '''DO_NOT_ECHO\nmultiline''']",
 	} {
-		out, e := policy.Sanitize("toml", []byte(input))
+		out, e := policy.Sanitize(policy.CodexConfig, []byte(input))
 		if e != nil || bytes.Contains(out, []byte("DO_NOT_ECHO")) {
 			t.Fatal("syntax bypass")
 		}
 	}
-	out, e := policy.Sanitize("json", []byte(`{"auths":{"registry.example":{"auth":"DO_NOT_ECHO","identitytoken":"DO_NOT_ECHO"}},"credsStore":"osxkeychain","future":9007199254740993}`))
+	out, e := policy.Sanitize(policy.DockerConfig, []byte(`{"auths":{"registry.example":{"auth":"DO_NOT_ECHO","identitytoken":"DO_NOT_ECHO"}},"credsStore":"osxkeychain","future":9007199254740993}`))
 	if e != nil || bytes.Contains(out, []byte("DO_NOT_ECHO")) || !bytes.Contains(out, []byte("osxkeychain")) || !bytes.Contains(out, []byte("9007199254740993")) {
 		t.Fatal("Docker redaction or precision")
 	}
-	out, e = policy.Sanitize("npm", []byte("//registry.example/:_authToken=DO_NOT_ECHO\n_auth=DO_NOT_ECHO\n_password=DO_NOT_ECHO\nregistry=https://registry.example\nstrict-ssl=true\n"))
+	out, e = policy.Sanitize(policy.NPMConfig, []byte("//registry.example/:_authToken=DO_NOT_ECHO\n_auth=DO_NOT_ECHO\n_password=DO_NOT_ECHO\nregistry=https://registry.example\nstrict-ssl=true\n"))
 	if e != nil || bytes.Contains(out, []byte("DO_NOT_ECHO")) || !bytes.Contains(out, []byte("strict-ssl=true")) {
 		t.Fatal("npm redaction")
 	}
@@ -150,20 +150,20 @@ func FuzzSanitize(f *testing.F) {
 	f.Add(`token = 'synthetic'`)
 	f.Add(`future = ['visible']`)
 	f.Fuzz(func(t *testing.T, s string) {
-		for _, format := range []string{"toml", "json", "npm"} {
-			out, e := policy.Sanitize(format, []byte(s))
+		for _, config := range []policy.Config{policy.CodexConfig, policy.ClaudeSettings, policy.ClaudeState, policy.DockerConfig, policy.NPMConfig} {
+			out, e := policy.Sanitize(config, []byte(s))
 			if e != nil {
 				if len(out) > 0 || e != policy.ErrDocument {
 					t.Fatal("partial output")
 				}
 				continue
 			}
-			if format == "json" && !json.Valid(out) {
+			if config.Format() == "json" && !json.Valid(out) {
 				t.Fatal("invalid json")
 			}
-			again, e := policy.Sanitize(format, out)
+			again, e := policy.Sanitize(config, out)
 			if e != nil || !bytes.Equal(out, again) {
-				t.Fatalf("not idempotent: format=%s output=%q again=%q error=%v", format, out, again, e)
+				t.Fatalf("not idempotent: config=%s output=%q again=%q error=%v", config, out, again, e)
 			}
 		}
 	})
@@ -171,13 +171,13 @@ func FuzzSanitize(f *testing.F) {
 
 func TestInvalidDocumentsHaveNoOutput(t *testing.T) {
 	for _, s := range []string{"broken = 'DO_NOT_ECHO", "key = 1\nkey = 2", strings.Repeat("#", policy.MaxDocument+1), strings.Repeat("nested.", 66) + "value='DO_NOT_ECHO'", "key='\xff'"} {
-		out, e := policy.Sanitize("toml", []byte(s))
+		out, e := policy.Sanitize(policy.CodexConfig, []byte(s))
 		if e != policy.ErrDocument || len(out) > 0 {
 			t.Fatal("invalid TOML exposed output")
 		}
 	}
 	for _, s := range []string{`{"token":"DO_NOT_ECHO"} {}`, `null`, `[1]`, `{"token":"DO_NOT_ECHO"`} {
-		out, e := policy.Sanitize("json", []byte(s))
+		out, e := policy.Sanitize(policy.ClaudeSettings, []byte(s))
 		if e != policy.ErrDocument || len(out) > 0 {
 			t.Fatal("invalid JSON exposed output")
 		}
@@ -186,7 +186,7 @@ func TestInvalidDocumentsHaveNoOutput(t *testing.T) {
 
 func TestLocalDatesAndTimesKeepWallClockValues(t *testing.T) {
 	input := "date = 2026-10-13\nclock = 23:45:12.123\nlocal = 2026-10-13T23:45:12\nzoned = 2026-10-13T23:45:12-04:00\n"
-	out, e := policy.Sanitize("toml", []byte(input))
+	out, e := policy.Sanitize(policy.CodexConfig, []byte(input))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -208,7 +208,7 @@ func TestClaudeStateHidesKeyEndingsAndPromptHistory(t *testing.T) {
   "oauthAccount": {"emailAddress": "user@example.com"},
   "other": {"customApiKeyResponses": "visible", "history": "visible"}
 }`
-	out, err := policy.Sanitize("json", []byte(input))
+	out, err := policy.Sanitize(policy.ClaudeState, []byte(input))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestClaudeSandboxCredentialDeclarationsStayVisible(t *testing.T) {
   "other": {"sandbox": {"credentials": {"name": "DO_NOT_ECHO"}}},
   "hooks": {"Stop": [{"command": "make && say <done>"}]}
 }`
-	out, err := policy.Sanitize("json", []byte(input))
+	out, err := policy.Sanitize(policy.ClaudeSettings, []byte(input))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,6 +246,35 @@ func TestClaudeSandboxCredentialDeclarationsStayVisible(t *testing.T) {
 	for _, visible := range []string{`"name": "GITHUB_TOKEN"`, `"mode": "mask"`, `"api.github.com"`, `"path": "~/.aws/credentials"`, `"secretAccessKeyVar": "MY_SECRET_KEY"`, `"sessionTokenVar": "MY_SESSION_TOKEN"`, `"streaming": "passthrough"`, `"make && say <done>"`} {
 		if !bytes.Contains(out, []byte(visible)) {
 			t.Fatalf("hid or escaped %s", visible)
+		}
+	}
+}
+
+// Rules that keep a value visible apply only to the config they describe; the
+// same layout in any other config stays hidden.
+func TestVisibilityRulesApplyOnlyToTheirConfig(t *testing.T) {
+	json := map[string]string{
+		"API_KEY_VAR":  `{"mcp_servers": {"x": {"env_http_headers": {"X-API-Key": "API_KEY_VAR"}}}}`,
+		"GITHUB_TOKEN": `{"sandbox": {"credentials": {"envVars": [{"name": "GITHUB_TOKEN"}]}}}`,
+	}
+	toml := map[string]string{
+		"API_KEY_VAR":  "[mcp_servers.x.env_http_headers]\n\"X-API-Key\" = \"API_KEY_VAR\"\n",
+		"GITHUB_TOKEN": "[[sandbox.credentials.envVars]]\nname = \"GITHUB_TOKEN\"\n",
+	}
+	owner := map[string]policy.Config{"API_KEY_VAR": policy.CodexConfig, "GITHUB_TOKEN": policy.ClaudeSettings}
+	for marker := range owner {
+		for _, config := range []policy.Config{policy.CodexConfig, policy.ClaudeSettings, policy.ClaudeState, policy.DockerConfig} {
+			input := json[marker]
+			if config.Format() == "toml" {
+				input = toml[marker]
+			}
+			out, err := policy.Sanitize(config, []byte(input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if visible := bytes.Contains(out, []byte(marker)); visible != (config == owner[marker]) {
+				t.Fatalf("%s in %s: visible = %v", marker, config, visible)
+			}
 		}
 	}
 }

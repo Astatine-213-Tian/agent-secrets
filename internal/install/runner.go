@@ -20,7 +20,7 @@ func RunPlan(home, encoded string) ([]byte, error) {
 	if !ok {
 		return nil, ErrPlan
 	}
-	resolved, format, e := configFile(home, p.Cwd, p.Path)
+	resolved, config, e := configFile(home, p.Cwd, p.Path)
 	if e != nil {
 		return nil, ErrPlan
 	}
@@ -28,7 +28,7 @@ func RunPlan(home, encoded string) ([]byte, error) {
 	if e != nil {
 		return nil, ErrPlan
 	}
-	b, e = policy.Sanitize(format, b)
+	b, e = policy.Sanitize(config, b)
 	if e != nil {
 		return nil, ErrPlan
 	}
@@ -43,14 +43,14 @@ func RunPlan(home, encoded string) ([]byte, error) {
 
 // configFile classifies a supported configuration and resolves it to the file
 // that may be opened. Config aliases are not a way to reach another resource.
-func configFile(home, cwd, path string) (resolved, format string, err error) {
+func configFile(home, cwd, path string) (resolved string, config policy.Config, err error) {
 	l := Locations(home, cwd)
 	if !l.Valid() || !filepath.IsAbs(path) {
 		return "", "", ErrPlan
 	}
 	path = filepath.Clean(path)
-	format = l.ConfigFormat(path)
-	if format == "" {
+	config = l.Config(path)
+	if config == "" {
 		return "", "", ErrPlan
 	}
 	resolved, e := ResolvePath(path)
@@ -68,7 +68,7 @@ func configFile(home, cwd, path string) (resolved, format string, err error) {
 	if e != nil || resolved != filepath.Join(parent, filepath.Base(path)) {
 		return "", "", ErrPlan
 	}
-	return resolved, format, nil
+	return resolved, config, nil
 }
 
 // writeView replaces one private view file. Its directory is kept owner-only.

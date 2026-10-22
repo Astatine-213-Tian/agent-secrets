@@ -18,7 +18,7 @@ var ErrDocument = errors.New("cannot safely sanitize document")
 
 // Sanitize is pure: no environment lookup, file reads or process execution.
 // Parse errors never return partial output or parser diagnostics.
-func Sanitize(format string, data []byte) (out []byte, err error) {
+func Sanitize(config Config, data []byte) (out []byte, err error) {
 	defer func() {
 		if recover() != nil {
 			out = nil
@@ -28,6 +28,7 @@ func Sanitize(format string, data []byte) (out []byte, err error) {
 	if len(data) > MaxDocument || !utf8.Valid(data) {
 		return nil, ErrDocument
 	}
+	format := config.Format()
 	if format == "npm" {
 		return sanitizeNPM(string(data))
 	}
@@ -44,7 +45,7 @@ func Sanitize(format string, data []byte) (out []byte, err error) {
 	default:
 		return nil, ErrDocument
 	}
-	clean, err := sanitizeValue(document, nil, false)
+	clean, err := sanitizeValue(config, document, nil, false)
 	if err != nil {
 		return nil, ErrDocument
 	}
@@ -86,19 +87,19 @@ func encodeJSON(document any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func sanitizeValue(value any, path []string, hidden bool) (any, error) {
+func sanitizeValue(config Config, value any, path []string, hidden bool) (any, error) {
 	if len(path) > 64 {
 		return nil, ErrDocument
 	}
-	if !hidden && referenceField(path, value) {
+	if !hidden && referenceField(config, path, value) {
 		return value, nil
 	}
-	hidden = hidden || sensitiveField(path)
+	hidden = hidden || sensitiveField(config, path)
 	switch v := value.(type) {
 	case map[string]any:
 		out := make(map[string]any, len(v))
 		for k, item := range v {
-			clean, e := sanitizeValue(item, append(path, k), hidden)
+			clean, e := sanitizeValue(config, item, append(path, k), hidden)
 			if e != nil {
 				return nil, e
 			}
@@ -108,7 +109,7 @@ func sanitizeValue(value any, path []string, hidden bool) (any, error) {
 	case []map[string]any:
 		out := make([]any, len(v))
 		for i, item := range v {
-			clean, e := sanitizeValue(item, append(path, ""), hidden)
+			clean, e := sanitizeValue(config, item, append(path, ""), hidden)
 			if e != nil {
 				return nil, e
 			}
@@ -117,11 +118,11 @@ func sanitizeValue(value any, path []string, hidden bool) (any, error) {
 		return out, nil
 	case []any:
 		if len(path) > 0 && path[len(path)-1] == "args" && !hidden {
-			return sanitizeArgs(v, path)
+			return sanitizeArgs(config, v, path)
 		}
 		out := make([]any, len(v))
 		for i, item := range v {
-			clean, e := sanitizeValue(item, append(path, ""), hidden)
+			clean, e := sanitizeValue(config, item, append(path, ""), hidden)
 			if e != nil {
 				return nil, e
 			}
@@ -154,7 +155,7 @@ func (t localTimestamp) MarshalTOML() ([]byte, error) { return []byte(t), nil }
 
 // Argument vectors carry a relationship across elements: --token and its
 // following value must be handled together, while ordinary arguments survive.
-func sanitizeArgs(args []any, path []string) ([]any, error) {
+func sanitizeArgs(config Config, args []any, path []string) ([]any, error) {
 	out := make([]any, len(args))
 	secretNext := false
 	for i, arg := range args {
@@ -163,7 +164,7 @@ func sanitizeArgs(args []any, path []string) ([]any, error) {
 			secretNext = false
 			continue
 		}
-		clean, e := sanitizeValue(arg, append(path, ""), false)
+		clean, e := sanitizeValue(config, arg, append(path, ""), false)
 		if e != nil {
 			return nil, e
 		}

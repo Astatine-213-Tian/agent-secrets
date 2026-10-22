@@ -96,6 +96,12 @@ families:
 - URL user information, sensitive query parameters, and known credential paths
 - Credential flags, credential assignments, and known secret material in text
 
+The rules that hide values apply to all configs. Thus, a match in an
+unrelated file only hides more. A rule that keeps an otherwise hidden value
+visible applies only to the config that it describes. `policy.Config` names
+the config. The runner and `policy.Edit` get it from the trusted path, not from
+the plan.
+
 Generic names, such as `auth` and `key`, need context. Inline environment
 entries, headers, and command arguments share the name recognition. The
 sanitizer does not scan usual source files for variable names. It does not

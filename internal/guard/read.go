@@ -71,7 +71,7 @@ func (g checker) readView(tool string, args any) (map[string]any, policy.Plan, b
 		return nil, policy.Plan{}, false
 	}
 	p = g.absolute(p)
-	if g.locations().ConfigFormat(p) == "" {
+	if g.locations().Config(p) == "" {
 		return nil, policy.Plan{}, false
 	}
 	updated := make(map[string]any, len(input))
@@ -135,7 +135,7 @@ func (g checker) readPlan(s *syntax.Stmt, source string) (policy.Plan, bool) {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(g.cwd, path)
 	}
-	if g.locations().ConfigFormat(path) == "" {
+	if g.locations().Config(path) == "" {
 		return no, false
 	}
 	return policy.Plan{Kind: "read", Path: filepath.Clean(path), Cwd: g.cwd}, true

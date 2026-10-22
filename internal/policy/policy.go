@@ -54,22 +54,50 @@ func (l Locations) Paths() []string {
 	return out
 }
 
-// ConfigFormat identifies only supported sanitizable configurations. Auth
-// stores remain protected even if their serialization happens to be JSON.
-func (l Locations) ConfigFormat(p string) string {
+// Config names a supported sanitizable configuration. Rules that hide values
+// apply to every config, so a misplaced match only hides more. Rules that keep
+// an otherwise hidden value visible apply only to the config they describe.
+type Config string
+
+const (
+	CodexConfig    Config = "codex"
+	ClaudeSettings Config = "claude-settings"
+	ClaudeState    Config = "claude-state"
+	DockerConfig   Config = "docker"
+	NPMConfig      Config = "npm"
+)
+
+// Format is the serialization the config is parsed and encoded with.
+func (c Config) Format() string {
+	switch c {
+	case CodexConfig:
+		return "toml"
+	case ClaudeSettings, ClaudeState, DockerConfig:
+		return "json"
+	case NPMConfig:
+		return "npm"
+	}
+	return ""
+}
+
+// Config identifies only supported sanitizable configurations. Auth stores
+// remain protected even if their serialization happens to be JSON.
+func (l Locations) Config(p string) Config {
 	p = filepath.Clean(p)
 	backup := filepath.Join(l.Home, ".local/share/agent-secrets/backups")
-	if p == backup || strings.HasPrefix(p, backup+"/") {
+	switch {
+	case p == backup || strings.HasPrefix(p, backup+"/"):
 		return ""
-	}
-	if p == filepath.Join(l.Home, ".codex/config.toml") || l.Codex != "" && p == filepath.Join(l.Codex, "config.toml") {
-		return "toml"
-	}
-	if p == filepath.Join(l.Home, ".docker/config.json") || l.Docker != "" && p == filepath.Join(l.Docker, "config.json") || p == filepath.Join(l.Home, ".claude/settings.json") || p == filepath.Join(l.Home, ".claude.json") {
-		return "json"
-	}
-	if filepath.Base(p) == ".npmrc" || l.NPM != "" && p == l.NPM {
-		return "npm"
+	case p == filepath.Join(l.Home, ".codex/config.toml") || l.Codex != "" && p == filepath.Join(l.Codex, "config.toml"):
+		return CodexConfig
+	case p == filepath.Join(l.Home, ".claude/settings.json"):
+		return ClaudeSettings
+	case p == filepath.Join(l.Home, ".claude.json"):
+		return ClaudeState
+	case p == filepath.Join(l.Home, ".docker/config.json") || l.Docker != "" && p == filepath.Join(l.Docker, "config.json"):
+		return DockerConfig
+	case filepath.Base(p) == ".npmrc" || l.NPM != "" && p == l.NPM:
+		return NPMConfig
 	}
 	return ""
 }
@@ -78,5 +106,6 @@ func (l Locations) ConfigFormat(p string) string {
 // comments to lose. Claude Code rewrites ~/.claude.json from memory and has
 // its own commands for it, so an outside edit could be silently undone.
 func (l Locations) Editable(p string) bool {
-	return l.ConfigFormat(p) == "json" && filepath.Clean(p) != filepath.Join(l.Home, ".claude.json")
+	c := l.Config(p)
+	return c == ClaudeSettings || c == DockerConfig
 }

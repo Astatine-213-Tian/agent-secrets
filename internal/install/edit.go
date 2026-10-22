@@ -79,7 +79,7 @@ func EditConfig(home, cwd, path string, key []string, value any, remove bool) er
 	if !Locations(home, cwd).Editable(path) {
 		return ErrEditUnsupported
 	}
-	resolved, _, e := configFile(home, cwd, path)
+	resolved, config, e := configFile(home, cwd, path)
 	if e != nil {
 		return ErrEdit
 	}
@@ -91,7 +91,7 @@ func EditConfig(home, cwd, path string, key []string, value any, remove bool) er
 	if e != nil {
 		return ErrEdit
 	}
-	after, e := policy.Edit(before, key, value, remove)
+	after, e := policy.Edit(config, before, key, value, remove)
 	if errors.Is(e, policy.ErrCredentialSetting) {
 		return ErrEditCredential
 	}
