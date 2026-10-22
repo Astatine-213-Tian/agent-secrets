@@ -27,7 +27,22 @@ const ConfigReason = Reason + " For a redacted view of this configuration file, 
 // ConfigEditReason replaces Reason in the hook when a file tool would change
 // a configuration that config set can edit. It names only the hook's binary.
 func ConfigEditReason(binary string) string {
-	return Reason + " To change one setting without reading the file, run in the shell: " + shellQuote(binary) + ` config set FILE KEY JSON_VALUE (for example env.EXAMPLE '"value"'), or config unset FILE KEY. Credential settings are refused.`
+	return Reason + configSet(binary)
+}
+
+// ViewContext accompanies a Read pointed at a sanitized view. Claude Code then
+// tracks the copy as read, so its own read-before-edit check rejects Edit and
+// Write on the original before the hook can explain the alternative.
+func ViewContext(binary string, editable bool) string {
+	context := "agent-secrets: this Read shows a redacted copy of the configuration file. Claude Code treats the original as unread, so Edit and Write on it fail, and changes to the copy are discarded."
+	if editable {
+		return context + configSet(binary)
+	}
+	return context + " agent-secrets does not edit this file format; ask the user to change it."
+}
+
+func configSet(binary string) string {
+	return " To change one setting without reading the file, run in the shell: " + shellQuote(binary) + ` config set FILE KEY JSON_VALUE (for example env.EXAMPLE '"value"'), or config unset FILE KEY. Credential settings are refused.`
 }
 
 const maxInput = 4 << 20

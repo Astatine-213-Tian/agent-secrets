@@ -96,7 +96,9 @@ A file tool has no pipeline to substitute, so a `Read` of a supported config is
 rewritten to a stored view. `Evaluate` stays pure and returns the view plan; the
 hook starts the private runner as a separate process, so the hook itself still
 reads no contents. The runner derives the view's location from its own home and
-the source path. Failure to store the view denies the read.
+the source path. Failure to store the view denies the read. Claude Code then
+treats the original as unread and rejects an `Edit` before any hook runs, so the
+rewrite itself tells the agent about `config set`.
 
 Config edits are the write-side counterpart. `policy.Edit` is pure: it changes
 one object member and refuses credential keys and any replaced value that the

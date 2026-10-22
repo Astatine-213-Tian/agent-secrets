@@ -62,6 +62,9 @@ func TestHookPointsReadAtSanitizedView(t *testing.T) {
 			if _, decided := result.Output["permissionDecision"]; decided != tt.decision {
 				t.Fatalf("%s: permission decision present = %v", path, decided)
 			}
+			if result.Output["additionalContext"] != guard.ViewContext(runner, true) {
+				t.Fatalf("%s: view does not name config set", path)
+			}
 			updated, _ := result.Output["updatedInput"].(map[string]any)
 			if updated["file_path"] != view || updated["offset"] != json.Number("9007199254740993") || updated["limit"] != json.Number("40") || len(updated) != len(args) {
 				t.Fatalf("%s: rewrite changed the wrong arguments", path)
@@ -97,6 +100,31 @@ func TestHookPointsReadAtSanitizedView(t *testing.T) {
 	}
 	if entries, err := os.ReadDir(filepath.Dir(view)); err != nil || len(entries) != 1 {
 		t.Fatal("views accumulated")
+	}
+}
+
+func TestHookViewOfUneditableConfigNamesNoCommand(t *testing.T) {
+	runner, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	source := filepath.Join(home, ".codex/config.toml")
+	if err := os.MkdirAll(filepath.Dir(source), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("model = \"gpt\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if guard.ClaudeHook(bytes.NewReader(readRequest(t, home, map[string]any{"file_path": source})), &out, io.Discard, home, home, runner) != 0 {
+		t.Fatal("config read not rewritten")
+	}
+	var result struct {
+		Output map[string]any `json:"hookSpecificOutput"`
+	}
+	if json.Unmarshal(out.Bytes(), &result) != nil || result.Output["additionalContext"] != guard.ViewContext(runner, false) {
+		t.Fatal("TOML view offered config set")
 	}
 }
 

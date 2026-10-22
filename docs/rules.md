@@ -89,7 +89,8 @@ agent-secrets config unset ~/.claude/settings.json env.MCP_TOOL_TIMEOUT
 
 This works for Claude `settings.json` and Docker `config.json`.
 It refuses to write, replace, or remove a credential, prints no values, and
-backs up the original. The denial for a blocked edit names this command.
+backs up the original. The denial for a blocked edit names this command, as
+does the note attached to a Claude Code `Read` of the file.
 See the [edit rules](rule-reference.md#config-edits).
 See the [supported read forms](rule-reference.md#supported-config-reads)
 and [exact value checks](rule-reference.md#credential-keys-and-paths).

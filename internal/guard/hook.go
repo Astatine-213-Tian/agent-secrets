@@ -49,6 +49,9 @@ func hook(input io.Reader, stdout, stderr io.Writer, home, cwd, binary string, a
 		if allow {
 			output["permissionDecision"] = "allow"
 		}
+		if decision.Context != "" {
+			output["additionalContext"] = decision.Context
+		}
 		b, err := json.Marshal(map[string]any{"hookSpecificOutput": output})
 		if err == nil {
 			_, err = stdout.Write(append(b, '\n'))

@@ -25,6 +25,8 @@ type Decision struct {
 	// View is the plan whose private runner must store the sanitized copy that
 	// a rewritten file-tool read names, before the client applies Input.
 	View *policy.Plan
+	// Context is shown to the agent alongside a rewritten file-tool read.
+	Context string
 	// ConfigView marks a denial that names a supported configuration file
 	// while the config-read bridge is available. ConfigEdit marks a denied
 	// file-tool change to a configuration that config set can edit.
@@ -109,7 +111,8 @@ func Evaluate(data []byte, home, cwd, binary string) (decision Decision) {
 		return Decision{Kind: Deny, ConfigView: bridge && g.namesConfig(args), ConfigEdit: bridge && g.editsConfig(tool, args)}
 	}
 	if view != nil {
-		return Decision{Kind: Rewrite, Input: args.(map[string]any), View: view}
+		editable := g.locations().ConfigFormat(view.Path) == "json"
+		return Decision{Kind: Rewrite, Input: args.(map[string]any), View: view, Context: ViewContext(binary, editable)}
 	}
 	if shell != nil {
 		if source := shell.rewriteSearch(); source != shell.input[shell.key] {

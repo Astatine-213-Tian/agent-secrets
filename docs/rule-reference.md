@@ -220,7 +220,10 @@ writes the view to `~/.cache/agent-secrets/views/<hash>-<name>` (directory
 trusted home and source path, not from the plan, and each source has one view
 that every read replaces. Other `Read` arguments such as `offset` and `limit`
 are preserved and apply to the view. If the view cannot be written, the read is
-denied. `guard`, other generic file tools, and MCP file tools remain denied on
+denied. The rewrite carries fixed `additionalContext`: Claude Code now tracks
+the copy as read, so its own read-before-edit check rejects `Edit` and `Write`
+on the original before the hook runs. The context names `config set` for
+editable JSON files and says other formats need the user. `guard`, other generic file tools, and MCP file tools remain denied on
 protected configs.
 
 Files must be regular and at most 4 MiB. Config-file symlinks and symlinks below

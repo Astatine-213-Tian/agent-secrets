@@ -109,7 +109,8 @@ reading it, agents (or you) run the installed executable:
 The value is JSON, so strings need inner quotes. Credential settings are
 refused, the original is backed up under `~/.local/share/agent-secrets/backups/`,
 and only a fixed message is printed. The hook's denial of an `Edit` on these
-files names this command. Restart the client if it does not reload the file.
+files names this command, and so does a Claude Code `Read` of them, since
+Claude Code rejects an `Edit` of a file it read only as a redacted copy. Restart the client if it does not reload the file.
 See the [edit rules](rule-reference.md#config-edits).
 
 Use `agent-secrets help` for the CLI and `agent-secrets version` for the package
