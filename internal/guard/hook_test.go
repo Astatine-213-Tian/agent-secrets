@@ -143,6 +143,8 @@ func TestConfigDenialPointsToRedactedView(t *testing.T) {
 		{"Edit", map[string]any{"file_path": "~/.codex/config.toml", "old_string": "a", "new_string": "b"}, guard.ConfigReason},
 		{"Edit", map[string]any{"file_path": "~/.claude/settings.json", "old_string": "a", "new_string": "b"}, guard.ConfigEditReason("/bin/agent-secrets")},
 		{"MultiEdit", map[string]any{"file_path": filepath.Join(home, ".claude/settings.json"), "edits": []any{}}, guard.ConfigEditReason("/bin/agent-secrets")},
+		{"Edit", map[string]any{"file_path": "~/.claude.json", "old_string": "a", "new_string": "b"}, guard.ConfigReason},
+		{"Bash", map[string]any{"command": "jq .mcpServers ~/.claude.json"}, guard.ConfigReason},
 		{"Read", map[string]any{"file_path": "~/.codex/auth.json"}, guard.Reason},
 		{"Read", map[string]any{"file_path": ".env"}, guard.Reason},
 	} {

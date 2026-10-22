@@ -197,6 +197,31 @@ func TestLocalDatesAndTimesKeepWallClockValues(t *testing.T) {
 	}
 }
 
+func TestClaudeStateHidesKeyEndingsAndPromptHistory(t *testing.T) {
+	input := `{
+  "mcpServers": {"api": {"command": "npx", "args": ["-y", "server", "--api-key", "DO_NOT_ECHO"], "env": {"OPENROUTER_API_KEY": "DO_NOT_ECHO", "LOG_LEVEL": "debug"}},
+    "remote": {"type": "http", "url": "https://mcp.example.com/mcp", "headers": {"Authorization": "Bearer DO_NOT_ECHO", "Accept": "text/event-stream"}}},
+  "customApiKeyResponses": {"approved": ["DO_NOT_ECHO"], "rejected": ["DO_NOT_ECHO"]},
+  "projects": {"/work/app": {"allowedTools": ["Bash(make:*)"], "hasTrustDialogAccepted": true,
+    "history": [{"display": "use DO_NOT_ECHO", "pastedContents": {"1": {"content": "DO_NOT_ECHO"}}}],
+    "mcpServers": {"local": {"command": "local-server", "env": {"SERVICE_TOKEN": "DO_NOT_ECHO"}}}}},
+  "oauthAccount": {"emailAddress": "user@example.com"},
+  "other": {"customApiKeyResponses": "visible", "history": "visible"}
+}`
+	out, err := policy.Sanitize("json", []byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(out, []byte("DO_NOT_ECHO")) {
+		t.Fatal("credential survived")
+	}
+	for _, visible := range []string{`"command": "npx"`, `"LOG_LEVEL": "debug"`, `"https://mcp.example.com/mcp"`, `"Accept": "text/event-stream"`, `"Bash(make:*)"`, `"hasTrustDialogAccepted": true`, `"command": "local-server"`, `"user@example.com"`, `"customApiKeyResponses": "visible"`, `"history": "visible"`} {
+		if !bytes.Contains(out, []byte(visible)) {
+			t.Fatalf("hid %s", visible)
+		}
+	}
+}
+
 func TestClaudeSandboxCredentialDeclarationsStayVisible(t *testing.T) {
 	input := `{
   "sandbox": {"credentials": {

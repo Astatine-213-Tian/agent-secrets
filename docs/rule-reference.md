@@ -184,8 +184,9 @@ runner, search byte limit, search deadline, or fixed ripgrep installation path.
 
 ### Supported config reads
 
-The runner sanitizes Codex `config.toml`, Claude `settings.json`, Docker
-`config.json`, and `.npmrc` files, including supported location overrides.
+The runner sanitizes Codex `config.toml`, Claude `settings.json` and
+`~/.claude.json`, Docker `config.json`, and `.npmrc` files, including supported
+location overrides.
 Auth stores such as Codex `auth.json` remain unreadable through this interface.
 
 Rewriting supports object-valued `tool_input` on `Bash` and `shell_command`
@@ -258,6 +259,9 @@ arrays, and every `profiles.<name>` subtree. Context adds these matches:
 - Npm `_auth`, `_authToken`, `_password`, including registry-prefixed entries.
 - `headers`/`http_headers` entries use the header rules below.
 - `query_params` entries use the query rules below.
+- Claude `~/.claude.json` top-level `customApiKeyResponses`, which keeps the
+  endings of approved and rejected API keys, and `projects.<path>.history`,
+  older prompt history that may hold pasted secrets.
 
 Claude Code's top-level `sandbox.credentials` block is an exception to the
 container rule: it declares the variables and files to protect by name, path,
@@ -319,6 +323,8 @@ agent-secrets config unset FILE KEY
 
 `FILE` must be Claude `~/.claude/settings.json` or a Docker `config.json`
 location. TOML and npm files are refused so their comments are not lost.
+`~/.claude.json` is refused because Claude Code rewrites it from memory and
+could undo an outside edit; use its own commands, such as `claude mcp remove`.
 `KEY` is dot-separated (`env.MCP_TOOL_TIMEOUT`) or a JSON array of member
 names for names containing dots. `JSON_VALUE` is one JSON value, so a string is
 quoted twice in the shell: `'"1800000"'`. Missing parent objects are created.

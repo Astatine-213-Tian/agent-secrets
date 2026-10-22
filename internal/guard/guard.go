@@ -38,7 +38,7 @@ func ViewContext(binary string, editable bool) string {
 	if editable {
 		return context + configSet(binary)
 	}
-	return context + " agent-secrets does not edit this file format; ask the user to change it."
+	return context + " agent-secrets does not edit this file; use the client's own commands, such as claude mcp or codex mcp, or ask the user."
 }
 
 func configSet(binary string) string {

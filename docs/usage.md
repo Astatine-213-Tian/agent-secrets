@@ -113,6 +113,9 @@ files names this command, and so does a Claude Code `Read` of them, since
 Claude Code rejects an `Edit` of a file it read only as a redacted copy. Restart the client if it does not reload the file.
 See the [edit rules](rule-reference.md#config-edits).
 
+`~/.claude.json` can be read the same redacted way but is not edited: Claude Code
+rewrites it from memory, so use its commands, such as `claude mcp remove NAME`.
+
 Use `agent-secrets help` for the CLI and `agent-secrets version` for the package
 and Go versions. The private reader is an internal hook target, not a public
 configuration-export command.

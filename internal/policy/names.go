@@ -74,6 +74,12 @@ func sensitiveField(path []string) bool {
 	if len(path) == 2 && path[0] == "sandbox" && path[1] == "credentials" {
 		return false
 	}
+	// ~/.claude.json keeps the endings of API keys the user approved or
+	// rejected and, in older versions, per-project prompt history that may
+	// hold pasted secrets.
+	if len(path) == 1 && path[0] == "customApiKeyResponses" || len(path) == 3 && path[0] == "projects" && path[2] == "history" {
+		return true
+	}
 	if len(path) >= 2 && (NormalizeName(path[len(path)-2]) == "http_headers" || NormalizeName(path[len(path)-2]) == "headers") {
 		return SensitiveHeader(n)
 	}

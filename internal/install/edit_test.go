@@ -95,6 +95,23 @@ func TestConfigCommandRefusesUnsafeEdits(t *testing.T) {
 	}
 }
 
+func TestConfigEditRefusesClaudeState(t *testing.T) {
+	home, _ := settingsHome(t)
+	path := filepath.Join(home, ".claude.json")
+	state := `{"mcpServers": {"example": {"command": "example"}}}`
+	if err := os.WriteFile(path, []byte(state), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"unset", "~/.claude.json", "mcpServers.example"}, {"set", path, "theme", `"dark"`}} {
+		if err := ConfigCommand(home, home, args); err != ErrEditUnsupported {
+			t.Fatalf("%v: got %v", args, err)
+		}
+	}
+	if b, err := os.ReadFile(path); err != nil || string(b) != state {
+		t.Fatal("refused edit changed ~/.claude.json")
+	}
+}
+
 func TestConfigEditKeepsOwnHook(t *testing.T) {
 	home, path := settingsHome(t)
 	installed, err := Prepare(filepath.Join(home, ".local/share/agent-secrets/agent-secrets"), Documents{Claude: []byte(settings)})

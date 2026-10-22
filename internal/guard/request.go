@@ -111,8 +111,7 @@ func Evaluate(data []byte, home, cwd, binary string) (decision Decision) {
 		return Decision{Kind: Deny, ConfigView: bridge && g.namesConfig(args), ConfigEdit: bridge && g.editsConfig(tool, args)}
 	}
 	if view != nil {
-		editable := g.locations().ConfigFormat(view.Path) == "json"
-		return Decision{Kind: Rewrite, Input: args.(map[string]any), View: view, Context: ViewContext(binary, editable)}
+		return Decision{Kind: Rewrite, Input: args.(map[string]any), View: view, Context: ViewContext(binary, g.locations().Editable(view.Path))}
 	}
 	if shell != nil {
 		if source := shell.rewriteSearch(); source != shell.input[shell.key] {
@@ -167,7 +166,7 @@ func (g checker) editsConfig(tool string, args any) bool {
 		return false
 	}
 	p, ok := m["file_path"].(string)
-	return ok && g.locations().ConfigFormat(g.absolute(p)) == "json"
+	return ok && g.locations().Editable(g.absolute(p))
 }
 
 func (g checker) absolute(p string) string {

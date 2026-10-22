@@ -108,23 +108,32 @@ func TestHookViewOfUneditableConfigNamesNoCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	home := t.TempDir()
-	source := filepath.Join(home, ".codex/config.toml")
-	if err := os.MkdirAll(filepath.Dir(source), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(source, []byte("model = \"gpt\"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	var out bytes.Buffer
-	if guard.ClaudeHook(bytes.NewReader(readRequest(t, home, map[string]any{"file_path": source})), &out, io.Discard, home, home, runner) != 0 {
-		t.Fatal("config read not rewritten")
-	}
-	var result struct {
-		Output map[string]any `json:"hookSpecificOutput"`
-	}
-	if json.Unmarshal(out.Bytes(), &result) != nil || result.Output["additionalContext"] != guard.ViewContext(runner, false) {
-		t.Fatal("TOML view offered config set")
+	for _, tt := range []struct{ name, contents, visible string }{
+		{".codex/config.toml", "model = \"gpt\"\n", "gpt"},
+		{".claude.json", `{"mcpServers": {"api": {"command": "openrouter", "env": {"OPENROUTER_API_KEY": "DO_NOT_ECHO"}}}}`, "openrouter"},
+	} {
+		home := t.TempDir()
+		source := filepath.Join(home, tt.name)
+		if err := os.MkdirAll(filepath.Dir(source), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(source, []byte(tt.contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		if guard.ClaudeHook(bytes.NewReader(readRequest(t, home, map[string]any{"file_path": source})), &out, io.Discard, home, home, runner) != 0 {
+			t.Fatalf("%s: config read not rewritten", tt.name)
+		}
+		var result struct {
+			Output map[string]any `json:"hookSpecificOutput"`
+		}
+		if json.Unmarshal(out.Bytes(), &result) != nil || result.Output["additionalContext"] != guard.ViewContext(runner, false) {
+			t.Fatalf("%s: view offered config set", tt.name)
+		}
+		b, err := os.ReadFile(policy.ViewPath(home, source))
+		if err != nil || !bytes.Contains(b, []byte(tt.visible)) || bytes.Contains(b, []byte("DO_NOT_ECHO")) {
+			t.Fatalf("%s: view is not the sanitized configuration", tt.name)
+		}
 	}
 }
 

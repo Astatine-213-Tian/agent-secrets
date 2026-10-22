@@ -20,7 +20,7 @@ const EditDone = "Configuration updated and read back; no values were printed. R
 
 var (
 	ErrEditUsage       = errors.New("Usage: agent-secrets config set FILE KEY JSON_VALUE, or config unset FILE KEY. KEY is dot-separated (env.MCP_TOOL_TIMEOUT) or a JSON array of names; JSON_VALUE is JSON, such as '\"1800000\"' for a string.")
-	ErrEditUnsupported = errors.New("Unsupported file: config set changes Claude Code settings.json and Docker config.json; TOML and npm files are not edited, to keep their comments.")
+	ErrEditUnsupported = errors.New("Unsupported file: config set changes Claude Code settings.json and Docker config.json. TOML and npm files are not edited, to keep their comments; change ~/.claude.json with Claude Code's own commands, such as claude mcp remove NAME.")
 	ErrEditCredential  = errors.New("Refused: the setting is or contains a credential; no values were printed.")
 	ErrEditProtection  = errors.New("Refused: the edit would weaken credential protection (the agent-secrets hook, disableAllHooks, or sandbox.credentials); no values were printed.")
 	ErrEdit            = errors.New("Cannot safely change configuration; the file may be malformed, missing the key, linked, or changed. No file contents were printed.")
@@ -76,7 +76,7 @@ func EditConfig(home, cwd, path string, key []string, value any, remove bool) er
 		return ErrEdit
 	}
 	path = filepath.Clean(path)
-	if Locations(home, cwd).ConfigFormat(path) != "json" {
+	if !Locations(home, cwd).Editable(path) {
 		return ErrEditUnsupported
 	}
 	resolved, _, e := configFile(home, cwd, path)

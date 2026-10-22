@@ -63,7 +63,8 @@ The hook can replace a basic `cat FILE` command with a private reader.
 The reader replaces detected secret values with `[REDACTED]`.
 Other values remain visible.
 
-This works for supported Codex, Claude, Docker, and npm configuration files.
+This works for supported Codex, Claude (including `~/.claude.json`), Docker,
+and npm configuration files.
 It does not provide a readable view of `.env` or login token stores.
 When another command is denied on a supported configuration,
 the denial message points to this `cat` view.
@@ -87,7 +88,8 @@ agent-secrets config set ~/.claude/settings.json env.MCP_TOOL_TIMEOUT '"1800000"
 agent-secrets config unset ~/.claude/settings.json env.MCP_TOOL_TIMEOUT
 ```
 
-This works for Claude `settings.json` and Docker `config.json`.
+This works for Claude `settings.json` and Docker `config.json`. Change
+`~/.claude.json` with Claude Code's own commands, such as `claude mcp remove`.
 It refuses to write, replace, or remove a credential, prints no values, and
 backs up the original. The denial for a blocked edit names this command, as
 does the note attached to a Claude Code `Read` of the file.

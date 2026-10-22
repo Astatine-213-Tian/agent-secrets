@@ -65,11 +65,18 @@ func (l Locations) ConfigFormat(p string) string {
 	if p == filepath.Join(l.Home, ".codex/config.toml") || l.Codex != "" && p == filepath.Join(l.Codex, "config.toml") {
 		return "toml"
 	}
-	if p == filepath.Join(l.Home, ".docker/config.json") || l.Docker != "" && p == filepath.Join(l.Docker, "config.json") || p == filepath.Join(l.Home, ".claude/settings.json") {
+	if p == filepath.Join(l.Home, ".docker/config.json") || l.Docker != "" && p == filepath.Join(l.Docker, "config.json") || p == filepath.Join(l.Home, ".claude/settings.json") || p == filepath.Join(l.Home, ".claude.json") {
 		return "json"
 	}
 	if filepath.Base(p) == ".npmrc" || l.NPM != "" && p == l.NPM {
 		return "npm"
 	}
 	return ""
+}
+
+// Editable reports a configuration that config set may change: JSON keeps no
+// comments to lose. Claude Code rewrites ~/.claude.json from memory and has
+// its own commands for it, so an outside edit could be silently undone.
+func (l Locations) Editable(p string) bool {
+	return l.ConfigFormat(p) == "json" && filepath.Clean(p) != filepath.Join(l.Home, ".claude.json")
 }
