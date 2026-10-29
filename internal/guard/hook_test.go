@@ -140,7 +140,9 @@ func TestConfigDenialPointsToRedactedView(t *testing.T) {
 	}{
 		{"Bash", map[string]any{"command": "head -n 20 ~/.codex/config.toml"}, guard.ConfigReason},
 		{"Read", map[string]any{"path": filepath.Join(home, ".codex/config.toml")}, guard.ConfigReason},
-		{"Edit", map[string]any{"file_path": "~/.codex/config.toml", "old_string": "a", "new_string": "b"}, guard.ConfigReason},
+		{"Edit", map[string]any{"file_path": "~/.codex/config.toml", "old_string": "a", "new_string": "b"}, guard.ConfigEditReason("/bin/agent-secrets")},
+		{"apply_patch", map[string]any{"command": "*** Begin Patch\n*** Update File: ~/.codex/config.toml\n@@\n-model = \"a\"\n+model = \"b\"\n*** End Patch"}, guard.ConfigEditReason("/bin/agent-secrets")},
+		{"apply_patch", map[string]any{"command": "*** Begin Patch\n*** Update File: .env\n+A=1\n*** End Patch"}, guard.Reason},
 		{"Edit", map[string]any{"file_path": "~/.claude/settings.json", "old_string": "a", "new_string": "b"}, guard.ConfigEditReason("/bin/agent-secrets")},
 		{"MultiEdit", map[string]any{"file_path": filepath.Join(home, ".claude/settings.json"), "edits": []any{}}, guard.ConfigEditReason("/bin/agent-secrets")},
 		{"Edit", map[string]any{"file_path": "~/.claude.json", "old_string": "a", "new_string": "b"}, guard.ConfigReason},

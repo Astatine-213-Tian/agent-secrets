@@ -69,7 +69,7 @@ working directory. The hook rejects known computed changes to a location.
 | Known copy, rename, or export of a usual credential directory as source | Deny. This also applies to the home directory that contains it. A copy of a usual file into the home directory is allowed. |
 | Shell writes to a protected file: output redirects (`>`, `>>`), the `cp` or `mv` destination, `tee` outputs | Allow. A write shows nothing. The hook continues to screen sources and input redirects. |
 | Write tool that makes a new file | Allow. For an existing file or link, the usual rules apply. |
-| Edit or patch of a protected file | Deny. These tools can show previous contents or diffs. For Claude `settings.json` and Docker `config.json`, the denial gives [`config set`](#config-edits). |
+| Edit or patch of a protected file | Deny. Claude Code and Codex record the previous contents or a diff of these tools in their session transcripts. For Claude `settings.json`, Codex `config.toml`, and Docker `config.json`, the denial gives [`config set`](#config-edits). |
 | `find` actions | Examine explicit nested commands and protected operands. Deny common bulk readers, for example `-exec cat {} +`. Allow `-exec basename {} \;`. |
 | Dumps of the environment, the process environment, or a credential store | Deny. |
 | Other application commands with credential-file arguments | Allow, if the hook does not deny a separate known operation. A protected filename alone is not a cause for a block. |
@@ -401,16 +401,18 @@ agent-secrets config set FILE KEY JSON_VALUE
 agent-secrets config unset FILE KEY
 ```
 
-`FILE` must be Claude `~/.claude/settings.json` or a Docker `config.json`
-location. The command refuses TOML and npm files, because an edit removes their
-comments. The command refuses `~/.claude.json`, because Claude Code writes it
+`FILE` must be Claude `~/.claude/settings.json`, a Codex `config.toml`
+location, or a Docker `config.json` location. The command refuses npm files.
+The command refuses `~/.claude.json`, because Claude Code writes it
 again from memory and can undo a change from a different process. Use the
 Claude Code commands for this file, for example `claude mcp remove`.
 
 `KEY` uses dots as separators (`env.MCP_TOOL_TIMEOUT`). If a member name
 contains a dot, give `KEY` as a JSON array of member names. `JSON_VALUE` is one
 JSON value. Thus, a string has two levels of quotes in the shell: `'"1800000"'`.
-The command makes missing parent objects.
+The command makes missing parent objects. In a TOML file, keys address tables
+and their keys. A JSON object becomes a table, and a JSON number becomes a TOML
+integer or float.
 
 The command refuses an edit in these conditions:
 
@@ -418,6 +420,7 @@ The command refuses an edit in these conditions:
 - The sanitized view of that file does not fully show the value that the edit
   replaces or removes.
 - The file is a symlink or is malformed.
+- The value is `null`, or contains `null`, in a TOML file. TOML has no null.
 - In Claude `settings.json`, the edit removes the agent-secrets hook
   registration, sets `disableAllHooks`, or changes all of `sandbox` or
   `sandbox.credentials`.
@@ -436,8 +439,9 @@ The edit follows the installation rules:
 4. Replace the file atomically and keep the original mode.
 5. Read the file again to verify the write.
 
-The command encodes the document again with two-space indentation and sorted
-keys. It keeps the precision of JSON numbers. The output is a fixed message.
+The command encodes the document again with sorted keys. JSON uses two-space
+indentation and keeps the precision of numbers. TOML loses its comments and
+layout, and keeps local dates and times. The output is a fixed message.
 The command never prints the file or the request. `agent-secrets` is not in the
 set of file commands. Thus, the hook does not screen its `FILE` argument as a
 read.

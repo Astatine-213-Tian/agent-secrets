@@ -46,7 +46,8 @@ mise exec -- go test ./internal/guard -run '^$' -fuzz FuzzHook -fuzztime 10s
 mise exec -- go test ./internal/install -run '^$' -fuzz FuzzPrepare -fuzztime 10s
 mise exec -- go test ./internal/policy -run '^$' -fuzz FuzzSanitize -fuzztime 10s
 mise exec -- go test ./internal/policy -run '^$' -fuzz FuzzPlan -fuzztime 10s
-mise exec -- go test ./internal/policy -run '^$' -fuzz FuzzEdit -fuzztime 10s
+mise exec -- go test ./internal/policy -run '^$' -fuzz '^FuzzEdit$' -fuzztime 10s
+mise exec -- go test ./internal/policy -run '^$' -fuzz '^FuzzEditTOML$' -fuzztime 10s
 ```
 
 To measure coverage, run `mise exec -- go test -cover ./...`.

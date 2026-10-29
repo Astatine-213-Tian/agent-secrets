@@ -1,21 +1,27 @@
 package policy
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"reflect"
+	"time"
 	"unicode/utf8"
+
+	"github.com/BurntSushi/toml"
 )
 
 // ErrCredentialSetting refuses an edit that would write, replace, or remove a
 // value the sanitized view hides.
 var ErrCredentialSetting = errors.New("setting is or contains a credential")
 
-// Edit sets, or with remove deletes, one object member of a JSON document. It
-// is pure, like Sanitize. The key names object members only: an array element
-// cannot be addressed, so an edit never changes how another value is
-// classified (argument vectors pair --token with the following element).
-// Missing parent objects are created. Output is re-encoded with two-space
-// indentation, sorted keys, and exact numbers; formatting is not preserved.
+// Edit sets, or with remove deletes, one object member of a JSON or TOML
+// document. It is pure, like Sanitize. The key names object members (TOML
+// tables and keys) only: an array element cannot be addressed, so an edit never
+// changes how another value is classified (argument vectors pair --token with
+// the following element). Missing parent objects are created. Output is
+// re-encoded with sorted keys and exact values; formatting and TOML comments
+// are not preserved.
 func Edit(config Config, data []byte, key []string, value any, remove bool) (out []byte, err error) {
 	defer func() {
 		if recover() != nil {
@@ -23,10 +29,21 @@ func Edit(config Config, data []byte, key []string, value any, remove bool) (out
 			err = ErrDocument
 		}
 	}()
-	if config.Format() != "json" || len(data) > MaxDocument || !utf8.Valid(data) || len(key) == 0 || len(key) > 64 {
+	format := config.Format()
+	if format != "json" && format != "toml" || len(data) > MaxDocument || !utf8.Valid(data) || len(key) == 0 || len(key) > 64 {
 		return nil, ErrDocument
 	}
-	document := decodeJSON(data)
+	var document map[string]any
+	if format == "json" {
+		document = decodeJSON(data)
+	} else if toml.Unmarshal(data, &document) == nil {
+		document, _ = tomlDocument(document).(map[string]any)
+		if !remove {
+			if value = tomlValue(value); value == nil {
+				return nil, ErrDocument
+			}
+		}
+	}
 	if document == nil {
 		return nil, ErrDocument
 	}
@@ -76,5 +93,75 @@ func Edit(config Config, data []byte, key []string, value any, remove bool) (out
 	} else {
 		parent[name] = value
 	}
-	return encodeJSON(document)
+	if format == "json" {
+		return encodeJSON(document)
+	}
+	return encodeTOML(document)
+}
+
+// tomlDocument gives decoded TOML the shapes Sanitize produces, so a visible
+// value compares equal to its view: local times keep their wall clock, and
+// arrays of tables become plain arrays.
+func tomlDocument(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		for k, item := range v {
+			v[k] = tomlDocument(item)
+		}
+	case []map[string]any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = tomlDocument(item)
+		}
+		return out
+	case []any:
+		for i, item := range v {
+			v[i] = tomlDocument(item)
+		}
+	case time.Time:
+		if local, ok := localTime(v); ok {
+			return local
+		}
+	}
+	return value
+}
+
+// tomlValue converts a JSON value to TOML, or returns nil: TOML has no null.
+// JSON numbers become integers when exact, and floats otherwise.
+func tomlValue(value any) any {
+	switch v := value.(type) {
+	case json.Number:
+		if n, e := v.Int64(); e == nil {
+			return n
+		}
+		if f, e := v.Float64(); e == nil {
+			return f
+		}
+		return nil
+	case map[string]any:
+		for k, item := range v {
+			if v[k] = tomlValue(item); v[k] == nil {
+				return nil
+			}
+		}
+	case []any:
+		for i, item := range v {
+			if v[i] = tomlValue(item); v[i] == nil {
+				return nil
+			}
+		}
+	}
+	return value
+}
+
+// encodeTOML writes flat tables and refuses output that does not parse back.
+func encodeTOML(document map[string]any) ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := toml.NewEncoder(&buf)
+	encoder.Indent = ""
+	var check map[string]any
+	if encoder.Encode(document) != nil || toml.Unmarshal(buf.Bytes(), &check) != nil {
+		return nil, ErrDocument
+	}
+	return buf.Bytes(), nil
 }

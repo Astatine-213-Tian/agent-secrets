@@ -91,15 +91,19 @@ The reader does not change the source file.
 
 ## Changing settings
 
-The hook blocks `Edit` and `Write` on these files, because these tools show
-previous contents. To change one setting and not read the file, run:
+The hook blocks `Edit`, `Write`, and `apply_patch` on these files. The clients
+record the previous file contents of these tools in their session transcripts.
+To change one setting and not read the file, run:
 
 ```sh
 agent-secrets config set ~/.claude/settings.json env.MCP_TOOL_TIMEOUT '"1800000"'
 agent-secrets config unset ~/.claude/settings.json env.MCP_TOOL_TIMEOUT
+agent-secrets config set ~/.codex/config.toml model '"o3"'
 ```
 
-These commands change Claude `settings.json` and Docker `config.json` only.
+These commands change Claude `settings.json`, Codex `config.toml`, and Docker
+`config.json` only. An edit of `config.toml` removes its comments and changes
+its layout. The backup keeps the original file.
 To change `~/.claude.json`, use the Claude Code commands, for example
 `claude mcp remove`.
 

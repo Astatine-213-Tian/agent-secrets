@@ -58,6 +58,71 @@ func TestConfigCommandEditsSettings(t *testing.T) {
 	}
 }
 
+const codexConfig = `# chosen model
+model = "gpt"
+cutoff = 07:32:00
+
+[mcp_servers.demo]
+command = "npx"
+env = { API_KEY = "DO_NOT_ECHO" }
+`
+
+func TestConfigCommandEditsCodexConfig(t *testing.T) {
+	for _, override := range []bool{false, true} {
+		home := t.TempDir()
+		dir := filepath.Join(home, ".codex")
+		if override {
+			dir = filepath.Join(home, "codex-home")
+		}
+		t.Setenv("CODEX_HOME", "")
+		if override {
+			t.Setenv("CODEX_HOME", dir)
+		}
+		path := filepath.Join(dir, "config.toml")
+		if err := os.MkdirAll(dir, 0700); err != nil || os.WriteFile(path, []byte(codexConfig), 0600) != nil {
+			t.Fatal("cannot write config")
+		}
+		for _, args := range [][]string{
+			{"set", path, "model", `"o3"`},
+			{"set", path, "mcp_servers.demo.startup_timeout_sec", "30"},
+			{"set", path, "features", `{"web_search": true}`},
+		} {
+			if err := ConfigCommand(home, home, args); err != nil {
+				t.Fatalf("%v: %v", args, err)
+			}
+		}
+		for _, tt := range []struct {
+			args []string
+			want error
+		}{
+			{[]string{"set", path, "mcp_servers.demo.env.API_KEY", `"x"`}, ErrEditCredential},
+			{[]string{"unset", path, "mcp_servers.demo"}, ErrEditCredential},
+			{[]string{"set", path, "model", "null"}, ErrEdit},
+		} {
+			if err := ConfigCommand(home, home, tt.args); err != tt.want {
+				t.Fatalf("%v: got %v", tt.args, err)
+			}
+		}
+		b, err := os.ReadFile(path)
+		text := string(b)
+		for _, want := range []string{`model = "o3"`, "cutoff = 07:32:00", "startup_timeout_sec = 30", "web_search = true", `API_KEY = "DO_NOT_ECHO"`} {
+			if err != nil || !strings.Contains(text, want) {
+				t.Fatalf("missing %q after edit", want)
+			}
+		}
+		// Re-encoding drops comments; the private backup keeps the original.
+		backups, err := filepath.Glob(filepath.Join(home, ".local/share/agent-secrets/backups/*/config.toml"))
+		found := false
+		for _, backup := range backups {
+			b, _ := os.ReadFile(backup)
+			found = found || string(b) == codexConfig
+		}
+		if err != nil || !found || strings.Contains(text, "# chosen model") {
+			t.Fatal("original config not backed up")
+		}
+	}
+}
+
 func TestConfigCommandRefusesUnsafeEdits(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -67,7 +132,6 @@ func TestConfigCommandRefusesUnsafeEdits(t *testing.T) {
 		{"credential", []string{"set", "~/.claude/settings.json", "env.GITHUB_PERSONAL_ACCESS_TOKEN", `"x"`}, ErrEditCredential},
 		{"credential subtree", []string{"unset", "~/.claude/settings.json", "env"}, ErrEditCredential},
 		{"missing key", []string{"unset", "~/.claude/settings.json", "model"}, ErrEdit},
-		{"codex toml", []string{"set", "~/.codex/config.toml", "model", `"o3"`}, ErrEditUnsupported},
 		{"npmrc", []string{"set", "~/.npmrc", "registry", `"x"`}, ErrEditUnsupported},
 		{"env file", []string{"set", ".env", "A", `"x"`}, ErrEditUnsupported},
 		{"ordinary file", []string{"set", "/tmp/settings.json", "A", `"x"`}, ErrEditUnsupported},

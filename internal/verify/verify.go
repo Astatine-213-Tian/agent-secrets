@@ -85,6 +85,7 @@ func Process(ctx context.Context, binary, home string) Report {
 		{"embedded_shell_glob", "exec_command", map[string]any{"cmd": `python3 -c 'import os; os.system("cat .*")'`}, 2},
 		{"config_set_command", "Bash", map[string]any{"command": `agent-secrets config set ~/.claude/settings.json env.EXAMPLE '"1"'`}, 0},
 		{"claude_settings_edit", "Edit", map[string]any{"file_path": filepath.Join(home, ".claude/settings.json"), "old_string": "a", "new_string": "b"}, 2},
+		{"codex_config_patch", "apply_patch", map[string]any{"command": "*** Begin Patch\n*** Update File: " + filepath.Join(home, ".codex/config.toml") + "\n@@\n-model = \"a\"\n+model = \"b\"\n*** End Patch"}, 2},
 	}
 	r := Report{Passed: true, Scope: "executable hook and sanitized-reader protocols only; not proof of live client hook activation"}
 	for _, c := range cases {

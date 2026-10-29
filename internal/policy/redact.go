@@ -134,12 +134,8 @@ func sanitizeValue(config Config, value any, path []string, hidden bool) (any, e
 			return Redacted, nil
 		}
 		if stamp, ok := v.(time.Time); ok {
-			// BurntSushi represents TOML local times with named locations but
-			// its encoder converts them to UTC. Preserve their wall-clock
-			// fields without changing process-global timezone state.
-			formats := map[string]string{"datetime-local": "2006-01-02T15:04:05.999999999", "date-local": "2006-01-02", "time-local": "15:04:05.999999999"}
-			if format, ok := formats[stamp.Location().String()]; ok {
-				return localTimestamp(stamp.Format(format)), nil
+			if local, ok := localTime(stamp); ok {
+				return local, nil
 			}
 		}
 		if s, ok := v.(string); ok {
@@ -152,6 +148,15 @@ func sanitizeValue(config Config, value any, path []string, hidden bool) (any, e
 type localTimestamp string
 
 func (t localTimestamp) MarshalTOML() ([]byte, error) { return []byte(t), nil }
+
+// localTime keeps a TOML local time's wall-clock fields. BurntSushi represents
+// local times with named locations but its encoder converts them to UTC; this
+// avoids changing process-global timezone state.
+func localTime(stamp time.Time) (localTimestamp, bool) {
+	formats := map[string]string{"datetime-local": "2006-01-02T15:04:05.999999999", "date-local": "2006-01-02", "time-local": "15:04:05.999999999"}
+	format, ok := formats[stamp.Location().String()]
+	return localTimestamp(stamp.Format(format)), ok
+}
 
 // Argument vectors carry a relationship across elements: --token and its
 // following value must be handled together, while ordinary arguments survive.

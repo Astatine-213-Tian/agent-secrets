@@ -109,7 +109,7 @@ func TestHookViewOfUneditableConfigNamesNoCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tt := range []struct{ name, contents, visible string }{
-		{".codex/config.toml", "model = \"gpt\"\n", "gpt"},
+		{".npmrc", "registry=https://registry.example.test/\n//registry.example.test/:_authToken=DO_NOT_ECHO\n", "registry.example.test"},
 		{".claude.json", `{"mcpServers": {"api": {"command": "openrouter", "env": {"OPENROUTER_API_KEY": "DO_NOT_ECHO"}}}}`, "openrouter"},
 	} {
 		home := t.TempDir()

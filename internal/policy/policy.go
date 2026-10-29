@@ -102,10 +102,11 @@ func (l Locations) Config(p string) Config {
 	return ""
 }
 
-// Editable reports a configuration that config set may change: JSON keeps no
-// comments to lose. Claude Code rewrites ~/.claude.json from memory and has
-// its own commands for it, so an outside edit could be silently undone.
+// Editable reports a configuration that config set may change. An edit
+// re-encodes the file, so TOML comments are lost; npm files are line-based and
+// not edited. Claude Code rewrites ~/.claude.json from memory and has its own
+// commands for it, so an outside edit could be silently undone.
 func (l Locations) Editable(p string) bool {
 	c := l.Config(p)
-	return c == ClaudeSettings || c == DockerConfig
+	return c == ClaudeSettings || c == DockerConfig || c == CodexConfig
 }

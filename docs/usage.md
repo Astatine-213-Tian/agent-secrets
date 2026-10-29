@@ -130,20 +130,24 @@ Shell filename checks apply only to the
 Pipelines and compound searches keep their usual shell behavior.
 The rules give the coverage and the limits.
 
-To change a setting in Claude `settings.json` or Docker `config.json` and not
-read the file, run the installed executable. An agent or you can run it:
+To change a setting in Claude `settings.json`, Codex `config.toml`, or Docker
+`config.json` and not read the file, run the installed executable. An agent or
+you can run it:
 
 ```sh
 ~/.local/share/agent-secrets/agent-secrets config set ~/.claude/settings.json env.MCP_TOOL_TIMEOUT '"1800000"'
 ~/.local/share/agent-secrets/agent-secrets config unset ~/.claude/settings.json env.MCP_TOOL_TIMEOUT
+~/.local/share/agent-secrets/agent-secrets config set ~/.codex/config.toml model '"o3"'
 ```
 
 The value is JSON. Thus, a string must have inner quotes.
 The command does not change credential settings.
 It makes a backup of the original file in
 `~/.local/share/agent-secrets/backups/`. It prints only a fixed message.
-When the hook denies an `Edit` on these files, the denial message gives this
-command.
+The hook denies `Edit`, `Write`, and `apply_patch` on these files, because
+the clients record previous file contents in their transcripts. The denial
+message gives this command.
+An edit of `config.toml` removes its comments. The backup keeps them.
 When Claude Code does a `Read` of these files, the hook note also gives it.
 The note is necessary because Claude Code rejects an `Edit` of a file that it
 read only as a redacted copy.

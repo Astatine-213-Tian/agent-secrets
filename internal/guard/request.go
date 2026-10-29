@@ -161,15 +161,35 @@ func (g checker) namesConfig(args any) bool {
 	return false
 }
 
-// editsConfig reports a file-tool change to a configuration that config set
-// can edit. It only selects the denial message.
+// editsConfig reports a file-tool change or patch to a configuration that
+// config set can edit. It only selects the denial message.
 func (g checker) editsConfig(tool string, args any) bool {
-	m, ok := args.(map[string]any)
-	if !ok || tool != "Edit" && tool != "MultiEdit" && tool != "Write" {
-		return false
+	var paths []string
+	m, _ := args.(map[string]any)
+	switch {
+	case strings.Contains(strings.ToLower(tool), "apply_patch"):
+		values := []any{args}
+		for _, v := range m {
+			values = append(values, v)
+		}
+		for _, v := range values {
+			if s, ok := v.(string); ok {
+				for _, match := range patchPath.FindAllStringSubmatch(s, -1) {
+					paths = append(paths, match[1])
+				}
+			}
+		}
+	case tool == "Edit" || tool == "MultiEdit" || tool == "Write":
+		if p, ok := m["file_path"].(string); ok {
+			paths = append(paths, p)
+		}
 	}
-	p, ok := m["file_path"].(string)
-	return ok && g.locations().Editable(g.absolute(p))
+	for _, p := range paths {
+		if g.locations().Editable(g.absolute(p)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (g checker) absolute(p string) string {

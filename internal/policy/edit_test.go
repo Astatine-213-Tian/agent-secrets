@@ -111,11 +111,109 @@ func TestEditScopesSandboxDeclarationsToClaudeSettings(t *testing.T) {
 			t.Fatalf("%s: got %v", config, err)
 		}
 	}
-	for _, config := range []policy.Config{policy.CodexConfig, policy.NPMConfig, ""} {
+	for _, config := range []policy.Config{policy.NPMConfig, ""} {
 		if out, err := policy.Edit(config, []byte(`{"a": 1}`), []string{"a"}, 2, false); err != policy.ErrDocument || out != nil {
-			t.Fatalf("%q: edited a config that is not JSON", config)
+			t.Fatalf("%q: edited an unsupported config", config)
 		}
 	}
+}
+
+const codexDocument = `# comment
+model = "gpt"
+cutoff = 07:32:00
+day = 2024-05-01
+
+[[profiles]]
+name = "fast"
+
+[mcp_servers.demo]
+command = "npx"
+args = ["-y", "--token", "DO_NOT_ECHO"]
+env = { API_KEY = "DO_NOT_ECHO", MODE = "dev" }
+`
+
+func TestEditChangesCodexConfig(t *testing.T) {
+	for _, tt := range []struct {
+		key    []string
+		value  any
+		remove bool
+		want   string
+	}{
+		{[]string{"model"}, "o3", false, `model = "o3"`},
+		{[]string{"mcp_servers", "demo", "startup_timeout_sec"}, json.Number("30"), false, "startup_timeout_sec = 30"},
+		{[]string{"temperature"}, json.Number("0.5"), false, "temperature = 0.5"},
+		{[]string{"features"}, map[string]any{"web_search": true, "depth": json.Number("2")}, false, "depth = 2"},
+		{[]string{"mcp_servers", "demo", "env", "MODE"}, nil, true, ""},
+		{[]string{"cutoff"}, nil, true, ""},
+	} {
+		out, err := policy.Edit(policy.CodexConfig, []byte(codexDocument), tt.key, tt.value, tt.remove)
+		if err != nil {
+			t.Fatalf("%v: %v", tt.key, err)
+		}
+		text := string(out)
+		if !strings.Contains(text, tt.want) || tt.remove && strings.Contains(text, tt.key[len(tt.key)-1]+" =") {
+			t.Fatalf("%v: edit not applied", tt.key)
+		}
+		// Unrelated values, credentials, local times, and arrays of tables survive.
+		for _, kept := range []string{`API_KEY = "DO_NOT_ECHO"`, `"--token", "DO_NOT_ECHO"`, "day = 2024-05-01", "[[profiles]]"} {
+			if !strings.Contains(text, kept) {
+				t.Fatalf("%v: lost %q", tt.key, kept)
+			}
+		}
+		if tt.key[0] != "cutoff" && !strings.Contains(text, "cutoff = 07:32:00") {
+			t.Fatalf("%v: local time changed", tt.key)
+		}
+	}
+}
+
+func TestEditRefusesCodexCredentialsAndNull(t *testing.T) {
+	for _, tt := range []struct {
+		key    []string
+		value  any
+		remove bool
+		want   error
+	}{
+		{[]string{"mcp_servers", "demo", "env", "API_KEY"}, "x", false, policy.ErrCredentialSetting},
+		{[]string{"mcp_servers", "demo", "args"}, []any{}, false, policy.ErrCredentialSetting},
+		{[]string{"mcp_servers", "demo"}, nil, true, policy.ErrCredentialSetting},
+		{[]string{"model"}, nil, false, policy.ErrDocument},
+		{[]string{"features"}, map[string]any{"a": nil}, false, policy.ErrDocument},
+		{[]string{"model", "nested"}, "x", false, policy.ErrDocument},
+	} {
+		if out, err := policy.Edit(policy.CodexConfig, []byte(codexDocument), tt.key, tt.value, tt.remove); err != tt.want || out != nil {
+			t.Fatalf("%v: got %v", tt.key, err)
+		}
+	}
+	if out, err := policy.Edit(policy.CodexConfig, []byte("model = "), []string{"model"}, "x", false); err != policy.ErrDocument || out != nil {
+		t.Fatal("malformed TOML edited")
+	}
+}
+
+// An accepted TOML edit never changes what the sanitized view hides, and
+// repeating it changes nothing.
+func FuzzEditTOML(f *testing.F) {
+	f.Add(codexDocument, "model", false)
+	f.Add(codexDocument, "mcp_servers.demo.command", false)
+	f.Add(codexDocument, "mcp_servers.demo.env.MODE", true)
+	f.Add("a = 1979-05-27T07:32:00\n[t]\nb = [1, 2]\n", "t.c", false)
+	f.Fuzz(func(t *testing.T, data, key string, remove bool) {
+		path := strings.Split(key, ".")
+		out, err := policy.Edit(policy.CodexConfig, []byte(data), path, "visible", remove)
+		if err != nil {
+			return
+		}
+		before, e1 := policy.Sanitize(policy.CodexConfig, []byte(data))
+		after, e2 := policy.Sanitize(policy.CodexConfig, out)
+		if e1 != nil || e2 != nil || strings.Count(string(before), policy.Redacted) != strings.Count(string(after), policy.Redacted) {
+			t.Fatal("edit changed hidden values")
+		}
+		if !remove {
+			again, err := policy.Edit(policy.CodexConfig, out, path, "visible", false)
+			if err != nil || string(again) != string(out) {
+				t.Fatal("edit is not repeatable")
+			}
+		}
+	})
 }
 
 // An accepted edit of a visible setting never changes what the sanitized view
