@@ -3,6 +3,7 @@ package guard
 import (
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/Astatine-213-Tian/agent-secrets/internal/policy"
@@ -179,7 +180,11 @@ func credentialInspection(name string, args []*syntax.Word) bool {
 	if name == "op" {
 		return (len(words) >= 1 && words[0] == "read") || (strings.Contains(joined, " item get ") && strings.Contains(joined, " --reveal "))
 	}
-	compose := name == "compose" || name == "docker" && strings.Contains(joined, " compose ")
+	var sub []string
+	if name == "docker" {
+		sub = dockerSubcommand(words)
+	}
+	compose := name == "compose" || len(sub) > 0 && sub[0] == "compose"
 	if compose && strings.Contains(joined, " config ") {
 		for _, w := range words {
 			switch w {
@@ -189,7 +194,14 @@ func credentialInspection(name string, args []*syntax.Word) bool {
 		}
 		return true
 	}
-	if name != "docker" || !strings.Contains(joined, " inspect ") {
+	whole := inspectionWhole
+	listing := false // Unformatted output omits the object's configuration.
+	switch {
+	case len(sub) >= 1 && sub[0] == "inspect":
+	case len(sub) >= 2 && sub[1] == "inspect" && credentialObjects[sub[0]]:
+	case len(sub) >= 1 && sub[0] == "buildx" && imagetoolsInspect(sub):
+		whole, listing = append([]string{"Image", "Provenance"}, inspectionWhole...), true
+	default:
 		return false
 	}
 	formatted := false
@@ -218,13 +230,40 @@ func credentialInspection(name string, args []*syntax.Word) bool {
 					return true
 				}
 			}
-			switch parts[len(parts)-1] {
-			case "Config", "ContainerConfig":
+			if slices.Contains(whole, parts[len(parts)-1]) {
 				return true
 			}
 		}
 	}
-	return !formatted // Default inspection includes the whole environment.
+	return !formatted && !listing // Default inspection includes the whole environment.
+}
+
+// Docker object types whose inspect output can hold an environment,
+// arguments, or stored data. Other types, for example manifests, volumes,
+// networks, and secrets, print none and stay allowed.
+var credentialObjects = map[string]bool{"container": true, "image": true, "service": true, "plugin": true, "config": true}
+
+// Fields whose full output holds an object's environment or stored data.
+var inspectionWhole = []string{"Config", "ContainerConfig", "Spec", "TaskTemplate", "ContainerSpec", "Settings", "Data"}
+
+// dockerSubcommand returns the words after docker's global options.
+func dockerSubcommand(words []string) []string {
+	for i := 0; i < len(words); i++ {
+		switch w := words[i]; w {
+		case "-c", "--context", "--config", "-H", "--host", "-l", "--log-level", "--tlscacert", "--tlscert", "--tlskey":
+			i++
+		default:
+			if !strings.HasPrefix(w, "-") {
+				return words[i:]
+			}
+		}
+	}
+	return nil
+}
+
+func imagetoolsInspect(sub []string) bool {
+	i := slices.Index(sub, "imagetools")
+	return i > 0 && i+1 < len(sub) && sub[i+1] == "inspect"
 }
 
 // gitObjectRead recognizes git show/cat-file of REV:PATH, which prints a

@@ -74,6 +74,18 @@ func TestOperationRules(t *testing.T) {
 		{`docker inspect -f '{{json .Config.Env}}' app`, 2},
 		{`docker inspect -f '{{.State.Status}}{{.Config.Env}}' app`, 2},
 		{"docker inspect app", 2}, {"docker compose config", 2}, {"docker ps", 0},
+		// Only object types that hold an environment or data are inspections.
+		{"docker image inspect example-image", 2}, {"docker --context remote inspect app", 2},
+		{"docker service inspect web", 2}, {`docker service inspect -f '{{json .Spec.TaskTemplate}}' web`, 2},
+		{`docker service inspect -f '{{.Spec.Name}}' web`, 0},
+		{"docker plugin inspect example-plugin", 2}, {`docker config inspect -f '{{.Spec.Data}}' app-config`, 2},
+		{"docker manifest inspect example-image:1.0", 0}, {"docker manifest inspect --verbose example-image:1.0", 0},
+		{"docker volume inspect data", 0}, {"docker network inspect bridge", 0}, {"docker secret inspect db-password", 0},
+		{"docker run --rm example-image echo inspect", 0}, {"docker run --rm example-image echo compose config", 0},
+		{"docker buildx imagetools inspect example-image:1.0", 0},
+		{`docker buildx imagetools inspect --format '{{json .Image}}' example-image:1.0`, 2},
+		{`docker buildx imagetools inspect --format '{{json .Provenance}}' example-image:1.0`, 2},
+		{`docker buildx imagetools inspect --format '{{json .Manifest}}' example-image:1.0`, 0},
 		{"cat project/.npmrc", 2}, {"cat ~/.docker/config.json", 2},
 	} {
 		t.Run(tt.command, func(t *testing.T) { check(t, "exec_command", map[string]any{"cmd": tt.command}, home, cwd, tt.want) })

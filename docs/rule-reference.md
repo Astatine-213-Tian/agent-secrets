@@ -162,14 +162,26 @@ The hook allows Keychain metadata lookups. It allows these Compose selectors:
 `--services`, `--images`, `--volumes`, `--profiles`, `--networks`, and
 `--quiet` or `-q`.
 
+Docker inspection rules apply only to object types that can hold an
+environment, arguments, or stored data: `docker inspect`, and `inspect` on
+`container`, `image`, `service`, `plugin`, and `config`. The hook allows all
+other `inspect` commands, for example on manifests, volumes, networks, and
+secrets. The hook finds the subcommand after the Docker global options. Thus,
+`inspect` as an argument of a different subcommand does not match.
+
 Docker inspection has no list of permitted templates or object counts. The hook
 allows usual selections, for example `{{.Name}}` and `{{.Config.Image}}`.
 The hook denies these items:
 
 - Known output of the full object (`{{json .}}`, `{{.}}`, or format `json`)
-- The full `Config` or `ContainerConfig`
+- The full `Config`, `ContainerConfig`, `Spec`, `TaskTemplate`,
+  `ContainerSpec`, `Settings`, or `Data`
 - Field selections that contain `Env`, `Args`, `Cmd`, `Entrypoint`, `Labels`,
   or a credential-name match
+
+`docker buildx imagetools inspect` prints a manifest summary. The hook allows
+it. The hook denies the same selections, and also the full `Image` or
+`Provenance`.
 
 These checks are limited recognizers. They are not a Go-template interpreter.
 Selections that a program makes at runtime and indirect template lookups can
